@@ -1,0 +1,11 @@
+#load "unix.cma";;
+#load "str.cma";;
+let oc_in, oc_out, oc_err = Unix.open_process_full "sollya  --flush" (Unix.environment ()) ;;
+flush oc_out;;
+let sollya_main_cmd = "write(2);\n";;
+output_string oc_out sollya_main_cmd;;
+flush oc_out;;
+let fd = Unix.descr_of_in_channel oc_in;;
+Unix.select [fd] [] [] (-1.0) ;;
+let r = String.create 250;;
+Unix.read fd r 0 100;;

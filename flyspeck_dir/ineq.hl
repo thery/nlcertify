@@ -1,0 +1,3651 @@
+(* ========================================================================== *)
+(* FLYSPECK - BOOK FORMALIZATION                                              *)
+(*                                                                            *)
+(* Chapter: Nonlinear                                                  *)
+(* Author: Thomas C. Hales                                                    *)
+(* Date: 2010-05-30                                                           *)
+(* ========================================================================== *)
+
+(* 
+File of the nonlinear inequalities to be verified by interval arithmetic.
+*)
+
+flyspeck_needs "general/sphere.hl";;
+flyspeck_needs "nonlinear/ineqdata3q1h.hl" ;;
+
+(* XX some Flypaper[] tags exist, without text attribution *)
+
+type tag =
+  (* Application and organization tags *)
+
+ | Flypaper of string list
+ | Clusterlp  | Marchal
+ | Tablelp | Main_estimate
+ | Fejestoth | Strongdodec | Further
+ | Tex | Derived of string list   | Deprecated  
+
+  (* Numerical testing tags *)
+
+  | Cfsqp | Cfsqp_branch of int | Eps of float 
+  | Penalty of float*float
+
+  (* Linear programming tags *)
+  |  Lp | Lp_aux of string | Lpsymmetry
+
+  (* Interval arithmetic verification tags *)
+
+  | Xconvert 
+  | Split of int list 
+  | Branch | Sharp  | Disallow_derivatives | Onlycheckderiv1negative 
+  | Dim_red | Dim_red_backsym 
+  | Quad_cluster of float
+  | Set_rad2 | Delta126min of float | Delta126max of float | Widthcutoff of float
+  | Delta135min of float | Delta135max of float 
+  | Set298 (* deprecated *)
+  ;;
+
+type ineq_datum = 
+  { 
+    ineq : term;
+    idv : string; (* name changed 2/16/2011 because of conflict with type_expr *)
+    doc : string;
+    tags : tag list;
+  };;
+
+type texmarker = Section | Ineqdoc | Comment;;
+
+
+module Ineq = struct
+
+open Sphere;;
+
+(* The nonlinear inequality data has become too widely dispersed over
+   the project directories.  This file is meant to be the authoritative
+   central repository for inequalities.
+
+   Old sources of information: 
+  (svn 1678 2010-04-26 of NonlinearInequalities.wiki)
+   software_guide.tex (svn 1760)
+*)
+
+
+let ineqdoc = ref [];;
+
+let addtex (a,b,c) = (ineqdoc := (a,b,c)::!ineqdoc);;
+
+(* 
+   Clusterlp means they enter the GLPK calcs for the cluster
+   inequality.
+
+   Marchal means they enter the non-negativity estimate for clusters
+   of Marchal cells.
+
+   Tablelp means they enter the LP calcs for the A and B tables in
+   the definition of Tame h.
+
+   Flypaper means an inequality cited directly in the flypaper
+   text. The tags are the citation names in the book.  
+
+   Further means that it is not part of the Flyspeck project, but
+   part of one of the extension theorems: StrongDodec, Fejes
+   Toth's contact conjecture, or Musin-Tarasov.
+
+   Fejestoth means that it is part of the proof of the Fejes Toth's contact conjecture,
+   but not part of the proof of the Kepler conjecture
+
+   Strongdodec means that it is part of the proof of the strong dodec conjecture,
+   but not part of the proof of the Kepler conjecture
+
+   The TeX flag means that the doc field is Tex'able code (with
+   software_guide.tex context).
+
+   CFSQP TAGS:
+   Cfsqp means that there is cfsqp nonlinear optimization code to
+   test it by gradient descent.
+
+   Cfsqp_branch uses this disjunct as the objective function, 
+   the others as constraints.
+   The default is disjunct 0.
+
+   Eps is a small epsilon that is added to numerical testing to
+   avoid answers neg. by machine eps.
+
+   Penalty implements a penalty method in cfsqp.
+
+   The floats (ub,wt) give the upper bound on the penalty term and its
+   weight.
+
+   LINEAR PROGRAMMING TAGS:
+   Lp gives an instruction to generate a MathProg inequality for the
+   GLPK program to eliminate tame hypermaps.
+
+   Lp_aux are use to prove the Lp inequalities, but are not themselves Lp.
+
+   Lpsymmetry gives an instruction to generate a second MathProg
+   inequality by symmetry.  y2 <-> y3, y5 <-> y6.  The domain must
+   already be symmetrical, otherwise an error results.
+
+   INTERVAL ARITHMETIC TAGS:
+   Derived means that it is not a primitive inequality, but rather a
+   logical consequence of others.
+
+   Main_estimate  inequalities for TameTableD and related AD HOC
+   linear programming inequalities.  These appear in the Local Fan
+   chapter of flypaper.
+
+   Xconvert means to use the squared variables "x1...x6" rather than
+   "y1..y6" when doing the nonlinear verification.
+
+   Split is an instruction to the nonlinear ineq verification to split
+   the indicated variables (at 2 h0).  This is needed on piecewise differentiable
+   functions (namely, lmfun) to restrict to differentiable domains.
+
+   Sharp means that equality is attained.
+
+   Disallow_derivatives means that verification should not use first derivative
+   sign to slide to an edge of the domain.
+
+   Onlycheckderiv1negative means that it is not the function itself that should be
+   verified, but only the first derivative of the first conjunct should be checked to 
+   be negative.  This is useful in monotonicity results.
+
+   Dim_red means that dimension reduction can be used on a quad cluster.
+
+   Dim_red_backsym means that dimension reduction can be used on a
+   quad cluster.  It is assumed that the function on the back simplex is taum.
+   It takes the following form x8,x9 are both extremal, if both
+   are as long as possible, then x7 is as short as possible.  Also x1
+   is minimal or x5 is minimal (eliminating x6 minimal by a symmetry
+   5-6,2-3,8-9 ).  The reductions also use ineq 4828966562 to assume
+   that the diagonal y4 is at most 3.01 when both x5 and x6 are extremal.
+
+   Quad_cluster is an ineq on a coupled pair of simplices. The float
+   is the margin value for "breaksapart".
+
+   Set_rad2 means the circumradius can be assumed to be exactly sqrt2.
+
+   Delta126min is a lower bound on delta_x x1 x2 (&2) (&2) (&2) x6
+
+   Delta126max is an upper bound on delta_x x1 x2 (&2) (&2) (&2) x6
+
+   Delta135min is a lower bound on delta_x x1 (&2) x3 (&2) x5 (&2).
+
+   Delta135max is an upper bound on delta_x x1 (&2) x3 (&2) x5 (&2).
+
+(*   Set298 is a special tag for the inequality 2986512815. *)
+
+*)
+
+
+
+
+let ineqs = ref ([]:ineq_datum list);;
+
+let add i  = (
+  ineqs:= i :: !ineqs; 
+  if (List.mem Tex i.tags) then addtex (Ineqdoc,i.idv,i.doc) else ()
+);;
+
+let ignore _ = ();;
+
+let remove idv = (
+   ineqs := filter (fun t -> not(t.idv=idv)) (!ineqs)
+);;
+
+let getexact idv = filter (fun t -> (t.idv = idv)) (!ineqs);;
+
+let getprefix idv = filter (fun t -> (String.length idv <= String.length t.idv) &&
+			     (String.sub t.idv 0 (String.length idv) = idv)) (!ineqs);;
+
+let getfield r = filter (fun t ->  mem r t.tags) (!ineqs);;
+
+let flypaper_ids idv = 
+  List.flatten(    map (function Flypaper s -> s | _ -> []) idv.tags);;
+
+let all_flypaper() = unions (map flypaper_ids (!ineqs));;
+
+let do_betas x = all_forall (snd(dest_eq(concl(BETAS_CONV x))));;
+
+let mk_tplate template r = 
+  do_betas(list_mk_comb (template, r));;
+
+
+(**************  DATA SECTION ******************************)
+
+addtex (Section,"Packing -- Marchal Inequality","");;
+
+addtex(Comment,"",
+"This first series shows that a Marchal 4-cell without any critical edges
+is non-negative.
+");
+
+add
+  {
+    idv= "TSKAJXY-TADIAMB";
+    ineq = (all_forall `ineq
+	      [ 
+		(&2 * hplus,y1,sqrt8);
+		(&2 * hplus,y2,sqrt8);
+		(#2.0,y3,sqrt8);
+		(#2.0,y4,sqrt8);
+		(#2.0,y5,sqrt8);
+		(#2.0,y6,sqrt8)
+	      ]
+	      (
+                 (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))`);
+    doc=      "This is a reduction step for main modified Marchal inequality 
+    (for lmfun).  Cannot have two adjacent long edges.";
+     tags = [Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert];
+  };;
+
+let TSKAJXY_DERIVED = 
+  {
+    idv= "TSKAJXY-DERIVED"; 
+    ineq = (all_forall `ineq
+	      [ 
+		(#2.0,y1,sqrt8);
+		(#2.0,y2,sqrt8);
+		(#2.0,y3,sqrt8);
+		(#2.0,y4,sqrt8);
+		(#2.0,y5,sqrt8);
+		(#2.0,y6,sqrt8)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun >= &0) )`);
+    doc="If a simplex does not have any critical edges then it is non-negative.  This inequality is not quite correct as stated.  It needs to have the condition that there are no critical edges.";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert;Derived [];Branch;Eps 1.0e-12;Sharp];
+  };;
+
+ignore
+  {
+    idv= "TSKAJXY-RIBCYXU"; 
+    ineq = (all_forall `ineq
+	      [ 
+		(#2.0,y1,&2 * hminus);
+		(#2.0,y2,&2 * hminus);
+		(#2.0,y3,&2 * hminus);
+		(#2.0,y4,&2 * hminus);
+		(#2.0,y5,&2 * hminus);
+		(#2.0,y6,&2 * hminus)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun >= &0) )`);
+    doc=      "If a simplex does not have any critical edges then it is non-negative.
+     This had long run times, so it has been replaced with the two subcases
+     -sharp and -sym that do symmetry reductions of the domain.";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert;Branch;Eps 1.0e-12;Sharp;Deprecated];
+  };;
+
+
+add
+  {
+    idv= "TSKAJXY-RIBCYXU sharp"; 
+    ineq = (all_forall `ineq
+	      [ 
+		(#2.0,y1,#2.001);
+		(#2.0,y2,#2.001);
+		(#2.0,y3,#2.001);
+		(#2.0,y4,#2.001);
+		(#2.0,y5,#2.001);
+		(#2.0,y6,#2.001)
+	      ]
+	      (gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun >= &0)`);
+    doc=      "If a simplex does not have any critical edges then it is non-negative.
+        ";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert;Branch;Eps 1.0e-12;Sharp];
+  };;
+
+add
+  {
+    idv= "TSKAJXY-RIBCYXU sym"; 
+    ineq = (all_forall `ineq
+	      [ 
+		(#2.001,y1,&2 * hminus);
+		(#2.0,y2,&2 * hminus);
+		(#2.0,y3,&2 * hminus);
+		(#2.0,y4,&2 * hminus);
+		(#2.0,y5,&2 * hminus);
+		(#2.0,y6,&2 * hminus)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > &0) \/
+           (y1 < y2) \/ (y1 < y3) \/ (y1 < y4) \/ (y1 < y5) \/ (y1 < y6) \/
+           (y2 < y3) \/ (y2 < y5) \/ (y2 < y6))`);
+    doc=      "
+       If a simplex does not have any critical edges then it is non-negative.
+        By symmetry, wlog y1 is largest and y2 is largest among y2,y3,y5,y6";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert;Branch];
+  };;
+
+ignore
+  {
+    idv= "TSKAJXY-IYOUOBF";
+    ineq = (all_forall `ineq
+	      [ 
+		(&2 * hplus,y1,sqrt8);
+		(#2.0,y2,&2 * hminus);
+		(#2.0,y3,&2 * hminus);
+		(#2.0,y4,&2 * hminus);
+		(#2.0,y5,&2 * hminus);
+		(#2.0,y6,&2 * hminus)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun >= &0) )`);
+    doc=      "If a simplex does not have any critical edges then it is non-negative.
+    Replaced May 24, 2011 with the symmetrized version to improve execution time.";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;
+	   Xconvert;Branch;Eps 1.0e-12;Sharp;Deprecated];
+  };;
+
+add
+  {
+    idv= "TSKAJXY-IYOUOBF sym";
+    ineq = (all_forall `ineq
+	      [ 
+		(&2 * hplus,y1,sqrt8);
+		(#2.001,y2,&2 * hminus);
+		(#2.0,y3,&2 * hminus);
+		(#2.0,y4,&2 * hminus);
+		(#2.0,y5,&2 * hminus);
+		(#2.0,y6,&2 * hminus)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun >= &0) \/
+               (y2 < y3 ) \/ (y2 < y5) \/ (y2 < y6) )`);
+    doc=      "If a simplex does not have any critical edges then it is non-negative.
+     By symmetry, we may assume that y2 is the longest of y2,y3,y5,y6";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert;Branch;Eps 1.0e-12;Sharp];
+  };;
+
+add
+  {
+    idv= "TSKAJXY-IYOUOBF sharp";
+    ineq = (all_forall `ineq
+	      [ 
+		(&2 * hplus,y1,sqrt8);
+		(#2.0,y2,#2.001);
+		(#2.0,y3,#2.001);
+		(#2.0,y4,#2.001);
+		(#2.0,y5,#2.001);
+		(#2.0,y6,#2.001)
+	      ]
+	      (gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun >= &0)`);
+    doc=      "If a simplex does not have any critical edges then it is non-negative.
+     ";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert;Branch;Eps 1.0e-12;Sharp];
+  };;
+
+
+ignore
+  {
+    idv= "TSKAJXY-WKGUESB";
+    ineq = (all_forall `ineq
+	      [ 
+		(&2 * hplus,y1,sqrt8);
+		(#2.01,y2,&2 * hminus);
+		(#2.0,y3,&2 * hminus);
+		(&2 * hplus,y4,sqrt8);
+		(#2.0,y5,&2 * hminus);
+		(#2.0,y6,&2 * hminus)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > &0)  )`);
+    doc="If a simplex does not have any critical edges then it is non-negative.
+      Case opposite edges y1,y4 long, and some other edge (y2) at least 2.01.
+     May 24, 2011. This was replaced with 'TSKAJXY-WKGUESB sym' that reduces
+     the domain using symmetry, because this was a slow calculation.
+       ";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Branch;Cfsqp;Xconvert;Deprecated];
+  };;
+
+add
+  {
+    idv= "TSKAJXY-WKGUESB sym";
+    ineq = (all_forall `ineq
+	      [ 
+		(&2 * hplus,y1,sqrt8);
+		(#2.01,y2,&2 * hminus);
+		(#2.0,y3,&2 * hminus);
+		(&2 * hplus,y4,sqrt8);
+		(#2.0,y5,&2 * hminus);
+		(#2.0,y6,&2 * hminus)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > &0) \/
+         (y2 < y3) \/ (y2 < y5) \/ (y2 < y6) \/ (y1 < y4) )`);
+    doc="If a simplex does not have any critical edges then it is non-negative.
+     Add symmetry reductions.
+     Case y1,y4 long and longest of the other edges is at least 2.01.  
+    Wlog, by symmetry y2.
+     Wlog, by tetrahedral symmetry, y1 longer than y4.
+     ";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Branch;Cfsqp;Xconvert];
+  };;
+
+
+add
+  {
+    idv= "TSKAJXY-XLLIPLS";
+    ineq = (all_forall `ineq
+	      [ 
+		(&2 * hplus,y1,#2.8);
+		(#2.0,y2,#2.01);
+		(#2.0,y3,#2.01);
+		(&2 * hplus,y4,sqrt8);
+		(#2.0,y5,#2.01);
+		(#2.0,y6,#2.01)
+	      ]
+	      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > &0) )`);
+    doc=      "If a simplex does not have any critical edges then it is non-negative.
+     Case y1,y4 long,  y1 <= 2.8, and all other edges at most 2.01.
+     ";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Branch;Cfsqp;Xconvert;];
+  };;
+
+add
+  {
+    idv= "TSKAJXY-GXSABWC DIV";
+    ineq = (all_forall `ineq
+	      [ 
+		(#2.8 pow 2,x1,&8);
+		(&4,x2,#2.01 pow 2);
+		(&4,x3,#2.01 pow 2);
+		(#2.8 pow 2,x4,&8);
+		(&4,x5,#2.01 pow 2);
+		(&4,x6,#2.01 pow 2)
+	      ]
+	      ((&1 / &12 - 
+		( 
+		  (&2 * mm1 / pi) *
+		    (sol_euler_x_div_sqrtdelta x1 x2 x3 x4 x5 x6 +
+		       sol_euler345_x_div_sqrtdelta x1 x2 x3 x4 x5 x6 +
+		       sol_euler156_x_div_sqrtdelta x1 x2 x3 x4 x5 x6 +
+		       sol_euler246_x_div_sqrtdelta x1 x2 x3 x4 x5 x6) -
+		    (&8 * mm2 / pi) * (
+		      ldih2_x_div_sqrtdelta_posbranch x1 x2 x3 x4 x5 x6 +
+		      ldih3_x_div_sqrtdelta_posbranch x1 x2 x3 x4 x5 x6 +
+		      ldih5_x_div_sqrtdelta_posbranch x1 x2 x3 x4 x5 x6 +
+		      ldih6_x_div_sqrtdelta_posbranch x1 x2 x3 x4 x5 x6
+		    )
+		) >= &0)   \/   
+	      (delta_x x1 x2 x3 x4 x5 x6 < &0) )`);
+    doc=     "If a simplex does not have any critical edges then it is non-negative.
+           This is a degenerate calculation, because the volume of the simplex tends to zero.
+       Case y1, y4 long, and all variables near the critical point.";
+     tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;];
+  };;
+
+
+addtex(Comment,"",
+"
+Here we treat 4-cells with at least one critical edge, but not a quarter.
+");;
+
+add
+{
+  idv = "GLFVCVK4 2477216213";
+  ineq = all_forall `ineq
+   [(&2 * hminus, y1, &2 * hplus);
+    (&2,y2,sqrt8);
+    (&2,y3,sqrt8);
+    (&2,y4,sqrt8);
+    (&2,y5,sqrt8);
+    (&2,y6,sqrt8)
+   ]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > &0)\/ 
+    (norm2hh y1 y2 y3 y4 y5 y6 <  (hplus- hminus) pow 2) \/
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))`;  (* norm2hh was <= *)
+  doc = "
+  \\claim{If $X$ is a $4$-cell that is not a quarter, then $\\gamma(X,L)\\ge0$.}
+  Indeed, if no edge of $X$ is critical, then $\\gamma(X,L)\\ge \\gamma(X,M)\\ge 0$.
+  If some edge of $X$ is critical, then we may label the edges so that it is the first, and
+  this computer calculation treats it.
+
+  If the norm condition holds, then it is a quarter.  This norm condition seems easier to
+  check in practice than the conditions defining a quarter.
+  ";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Tex;Xconvert;Branch;Split[0;1;2;3;4;5]];
+};;
+
+
+add
+{
+  idv = "GLFVCVK4a 8328676778";
+  ineq = all_forall `ineq
+   [(&2 * hminus, y1, &2 * hplus );
+    (&2 ,y2,&2 * hminus );
+    (&2,y3,&2 * hminus);
+    (&2 * hminus  ,y4,&2 * hplus );
+    (&2,y5,&2 * hminus );
+    (&2,y6,&2 * hminus )
+   ]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun / &2 +
+    beta_bump_force_y y1 y2 y3 y4 y5 y6 > &0)\/ 
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))`;
+  doc = "
+Let $\\gamma$ be given by Definition~\\ref{def:gammaL}, $\\op{wt}$ by
+Definition~\\ref{def:wt}, and $\\beta$ by Definition~\\ref{def:beta}.
+If $X$ is any $k$-cell with $k\\in\\{2,3,4\\}$, and if $X$ is not a quarter, then
+then % gammaL is nonneg on quarters. cc:qtr
+\\[ 
+\\gamma(X,L) \\op{wt}(X) + \\beta(\\ee,X)\\ge 0.
+\\]  
+  In fact, $\\beta(\\ee,X)=0$, except possibly when $X$ is a $4$-cell with oppositely
+  arranged critical edges.  Hence in most cases, it is enough to check the simpler
+  inequality $\\gamma(X,L)\\ge0$. This is the verification of the case where the factor
+  $\\beta$ matters and where all edges are critical or subcritical.
+  If some edge is supercritical, then the circumradius is at least
+  \\[
+ \\op{rad}(2h_-,2,2,2h_-,2h_+,2) > \\sqrt2,
+  \\]
+  and the simplex is not a $4$-cell.
+ ";
+    tags=[Marchal;Flypaper["OXLZLEZ";];Tex;Cfsqp;Xconvert;Branch;Split[0;3]];  
+  };;
+
+
+(*  *)
+
+
+addtex(Section,"Marchal 3-cell nonnegativity","");;
+
+
+ignore
+{
+  idv = "GLFVCVK3-a";
+  ineq = all_forall `ineq
+   [(&2 , y1, sqrt8);
+    (&2,y2,sqrt8);
+    (sqrt2,y3,sqrt2);
+    (sqrt2,y4,sqrt2);
+    (sqrt2,y5,sqrt2);
+    (&2,y6,sqrt8)
+   ]
+    (((vol_y y1 y2 y3 y4 y5 y6 - ( (&2 * mm1 / pi) *
+         (&2 * dih_y y1 y2 y3 y4 y5 y6 + &2 * dih2_y y1 y2 y3 y4 y5 y6 +
+          &2 * dih6_y y1 y2 y3 y4 y5 y6 + dih3_y y1 y2 y3 y4 y5 y6 +
+	  dih4_y y1 y2 y3 y4 y5 y6 + dih5_y y1 y2 y3 y4 y5 y6 - &3 * pi) -
+         (&8 * mm2 / pi) *
+         (lmfun (y1 / &2) * dih_y y1 y2 y3 y4 y5 y6 +
+          lmfun (y2 / &2) * dih2_y y1 y2 y3 y4 y5 y6 +
+          lmfun (y6 / &2) * dih6_y y1 y2 y3 y4 y5 y6))) >= &0)\/ 
+     (delta_y y1 y2 y3 y4 y5 y6 < #0.99) )`;
+  doc =   "
+     %4869905472
+     If $X$ is a $3$-cell, then $\\gamma(X,L)\\ge0$.
+      The inequality is sharp at $(2,2,2)$.
+    This case treats delta > #0.99.
+    I have used vol3f\\_palt and vol3r\\_alt to expand their definitions.
+   Replaced with -sharp and -nonsharp inequalities, May 27, 2011.";
+   (* (eta_y y1 y2 y6  > sqrt2) \/ *)
+  tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Sharp;Eps 1.0e-8;Xconvert;Branch;Split[0;1;5];Widthcutoff 0.002;Deprecated];
+};;
+
+
+add
+{
+  idv = "GLFVCVK3-a sharp";
+  ineq = all_forall `ineq
+   [(&2 , y1, #2.001);
+    (&2,y2,#2.001);
+    (sqrt2,y3,sqrt2);
+    (sqrt2,y4,sqrt2);
+    (sqrt2,y5,sqrt2);
+    (&2,y6,#2.001)
+   ]
+    ((vol_y y1 y2 y3 y4 y5 y6 - ( (&2 * mm1 / pi) *
+         (&2 * dih_y y1 y2 y3 y4 y5 y6 + &2 * dih2_y y1 y2 y3 y4 y5 y6 +
+          &2 * dih6_y y1 y2 y3 y4 y5 y6 + dih3_y y1 y2 y3 y4 y5 y6 +
+	  dih4_y y1 y2 y3 y4 y5 y6 + dih5_y y1 y2 y3 y4 y5 y6 - &3 * pi) -
+         (&8 * mm2 / pi) *
+         (lmfun (y1 / &2) * dih_y y1 y2 y3 y4 y5 y6 +
+          lmfun (y2 / &2) * dih2_y y1 y2 y3 y4 y5 y6 +
+          lmfun (y6 / &2) * dih6_y y1 y2 y3 y4 y5 y6)) >= &0)\/ 
+     (delta_y y1 y2 y3 y4 y5 y6 < #0.99) )`;
+  doc =   "
+     %4869905472
+     If $X$ is a $3$-cell, then $\\gamma(X,L)\\ge0$.
+      The inequality is sharp at $(2,2,2)$.
+    I have used vol3f\\_palt and vol3r\\_alt to expand their definitions.
+   May 25, 2011. By symmetry, wlog y1 < y2 < y6.
+   ";
+  tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Branch;Cfsqp;Sharp;Eps 1.0e-8;Xconvert;Branch;];
+};;
+
+add
+{
+  idv = "GLFVCVK3-a nonsharp";
+  ineq = all_forall `ineq
+   [(#2.001 , y1, sqrt8);
+    (&2,y2,sqrt8);
+    (sqrt2,y3,sqrt2);
+    (sqrt2,y4,sqrt2);
+    (sqrt2,y5,sqrt2);
+    (&2,y6,sqrt8)
+   ]
+    ((vol_y y1 y2 y3 y4 y5 y6 - ( (&2 * mm1 / pi) *
+         (&2 * dih_y y1 y2 y3 y4 y5 y6 + &2 * dih2_y y1 y2 y3 y4 y5 y6 +
+          &2 * dih6_y y1 y2 y3 y4 y5 y6 + dih3_y y1 y2 y3 y4 y5 y6 +
+	  dih4_y y1 y2 y3 y4 y5 y6 + dih5_y y1 y2 y3 y4 y5 y6 - &3 * pi) -
+         (&8 * mm2 / pi) *
+         (lmfun (y1 / &2) * dih_y y1 y2 y3 y4 y5 y6 +
+          lmfun (y2 / &2) * dih2_y y1 y2 y3 y4 y5 y6 +
+          lmfun (y6 / &2) * dih6_y y1 y2 y3 y4 y5 y6))  >= &0)\/ 
+       (y1 < y2) \/ (y2 < y6) \/
+     (delta_y y1 y2 y3 y4 y5 y6 < #0.99) )`;
+  doc =   "
+     %4869905472
+     If $X$ is a $3$-cell, then $\\gamma(X,L)\\ge0$.
+      The inequality is sharp at $(2,2,2)$.
+    I have used vol3f\\_palt and vol3r\\_alt to expand their definitions.
+   May 25, 2011. By symmetry, wlog y1 > y2 > y6.
+   ";
+  tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Sharp;Eps 1.0e-8;Xconvert;Branch;Split[0;1;5];Widthcutoff 0.003;];
+};;
+
+
+add
+{
+  idv = "GLFVCVK3-b";
+  ineq = all_forall `ineq
+   [(&2,y1,sqrt8);
+    (sqrt2,y2,sqrt2);
+    (&2,y3,sqrt8);
+    (sqrt2,y4,sqrt2);
+    (&2,y5,sqrt8);
+    (sqrt2,y6,sqrt2)
+   ]
+    (( &1 / &12 - 
+   ( (&2 * mm1 / pi) *
+         (y_of_x sol_euler_x_div_sqrtdelta y1 y2 y3 y4 y5 y6 
+	  + y_of_x sol_euler156_x_div_sqrtdelta y1 y2 y3 y4 y5 y6 + 
+	  y_of_x sol_euler345_x_div_sqrtdelta y1 y2 y3 y4 y5 y6) -
+         (&8 * mm2 / pi) *
+         (y_of_x lmdih_x_div_sqrtdelta_posbranch y1 y2 y3 y4 y5 y6 +
+          y_of_x lmdih3_x_div_sqrtdelta_posbranch y1 y2 y3 y4 y5 y6 +
+          y_of_x lmdih5_x_div_sqrtdelta_posbranch y1 y2 y3 y4 y5 y6)
+
+   )  > &0) \/ 
+     (delta_y y1 y2 y3 y4 y5 y6 < &0) \/
+          (delta_y y1 y2 y3 y4 y5 y6 > #1.0 )  )`;
+  doc =   "
+     %4869905472
+     If $X$ is a $3$-cell, then $\\gamma(X,L)\\ge0$.
+     When $\\eta=\\sqrt{2}$, (which is equivalent to the vanishing of $\\Delta$),
+    the inequality is sharp.
+
+    A term $\\Delta(y_1,\\sqrt2,y_3,\\sqrt2,y_5,\\sqrt2)$ has been 
+    factored out, from the function that appears in part a.";
+   (* vol3r y1 y3 y5 sqrt2 - vol3f y1 y3 y5 sqrt2 lmfun > &0 *)
+  tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Xconvert;Branch;Split[0;2;4]];
+};;
+
+
+addtex(Section,"Marchal 2-cell nonnegativity","");;
+
+add
+  {
+  idv = "GLFVCVK2 a";
+ ineq = all_forall `ineq
+  [     (#2.0,y,&2 * h0 ) ]
+   (vol2r y sqrt2 - vol2f y sqrt2 lfun > &0)`;
+  doc =   "If $X$ is a $2$-cell, then $\\gamma(X,L)\\ge0$.";
+    tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp];  
+  };;
+
+add
+  {
+  idv = "GLFVCVK2 b";
+ ineq = all_forall `ineq
+  [     (&2 * h0,y,sqrt8 ) ]
+   (vol2r y sqrt2 -  (&2 * mm1 / pi) * &2 * pi * (&1 - y / (sqrt2 * &2)) > &0)`;
+  doc =   "If $X$ is a $2$-cell, then $\\gamma(X,L)\\ge0$.";
+    tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Sharp;Eps 1.0e-15];  
+  };;
+
+
+addtex(Comment,"","Marchal 1-cell");;
+
+add
+{
+  idv =  "HJKDESR1a";
+  ineq =  all_forall `ineq
+  [     (sqrt2, r, sqrt2) ]
+   ( &4 * pi * (r pow 3) / (&3)  -  (&2 * mm1 / pi) * &4 * pi >= &0) `;
+  doc = 
+   "%old idv: 3148025108 , Packing Marchal 1-cell 
+   If $X$ is a $1$-cell, then $\\gamma(X,M)\\ge 0$.  
+   (The desired inequality is the
+   special case $r=\\sqrt2$ of the formal specification.)";
+(*  [     (#1.246, r, sqrt2) ] *)
+    tags=[Marchal;Flypaper["OXLZLEZ";"TSKAJXY";];Tex;Cfsqp;Eps 1.0e-7;Sharp];  
+};;
+
+addtex(Section,"Packing -- Cluster Inequality","");;
+
+addtex (Section,"Packing -- Cluster Inequality -- At most two leaves","");;
+
+
+add
+  {
+    idv = "FHBVYXZ a";
+    ineq = all_forall `ineq
+      [(&2 * hminus, y1, &2 * hplus );
+       (&2 ,y2,&2 * hminus );
+       (&2,y3,&2 * hminus);
+       (&2,y4,&2 * hminus);
+       (&2,y5,&2 * hminus );
+       (&2,y6,&2 * hminus )
+      ]
+      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun  
+	> &0)\/ 
+	 (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2) \/ (eta_y y1 y3 y5 pow 2 < #1.34 pow 2))`;
+    doc = "
+%old idv: 1118115412, cc:2bl
+If $X$ is any quarter, and  $Y$ is a $3$-cell that flanks it, then
+\\[ 
+\\gamma(X,L) + \\gamma(Y,L) \\ge 0.
+\\]  
+ ";
+(* + &0 * gamma3f y1 y3 y5 sqrt2 lmfun dropped *)
+    tags=[Marchal;Flypaper["OXLZLEZ";];Tex;Cfsqp;Xconvert;Branch;Split[0]];  
+  };;
+
+add
+  {
+    idv = "FHBVYXZ b";
+    ineq = all_forall `ineq
+      [(&2 * hminus, y1, &2 * hplus );
+       (&2,y2,&2 * hminus );
+       (&2,y3,&2 * hminus);
+       (&2,y4,&2 * hminus);
+       (&2,y5,&2 * hminus );
+       (&2,y6,&2 * hminus )
+      ]
+      ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun  + gamma3f y1 y2 y6 sqrt2 lmfun
+	> &0)\/ 
+	 (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2) \/ (eta_y y1 y2 y6 pow 2 > #1.34 pow 2))`;
+    doc = "
+%old idv: 1118115412, cc:2bl
+If $X$ is any quarter, and  $Y$ is a $3$-cell that flanks it, then
+\\[ 
+\\gamma(X,L) + \\gamma(Y,L) \\ge 0.
+\\]  
+ ";
+    tags=[Marchal;Flypaper["OXLZLEZ";];Tex;Cfsqp;Xconvert;Branch;Split[0]];  
+  };;
+
+
+addtex(Comment,"",
+"\\claim{We show that the cluster inequality holds 
+when there are at most two leaves along the critical
+edge.}  
+  Indeed, if the cluster has no quarter, then the inequality follows from \\ineq{GLFVCVK}.
+Assume that a quarter exists.  Then there are two leaves, which flank the quarter.  
+Next to the quarter is a three cell, 
+because the dihedral angle of a $4$-cell is less than $\\pi$.  
+ The quarter and the $3$-cell both have weight $1$.
+ The result follows from the given inequality.
+");;
+
+addtex(Section,"Packing Cluster Inequality -- Five or more leaves","");;
+
+addtex(Comment,"",
+"
+% cc:5bl
+Let $B$ be the set of cells in the cluster that lie between any two
+consecutive leaves.  $B$ is either a singleton set containing a
+$4$-cell, or a set of three cells: a $2$-cell and two adjacent
+$3$-cells.  Write $\\op{azim}(B)$ for the azimuth angle formed by the
+two leaves.  
+
+ Let
+ \\[ 
+ a= 0.0560305, \\textand   b= -0.0445813.
+ \\] 
+
+  The constants $a$ and $b$ must satisfy $5 a + b (2\\pi) >0$, for the $5$-leaf
+   case of the cluster inequality.
+
+   The circumradius of a triangle with sides $h_-,h_-,h_-$ is greater than $\\sqrt2$, so
+   in $4$-cells some edge next to the spine is subcritical.  Without loss of generality, we
+   can assume it is $y_2$.   We have the inequality for all $4$-cells:
+   \\[
+   \\gamma(X,L) \\op{wt}(X) + \\beta(\\e,X) \\ge a + b \\azim(X).
+   \\]
+    This has many cases \\ineq{ZTGIJCF4 i3 i4 i5 i6}, depending on which edges $y_3,\\ldots,y_6$
+    are subcritical, critical, or supercritical. 
+
+\\begin{itemize}\\wasitemize 
+\\item \\case{1821661595} A $4$-cell $X$ along a spine $e$ satisfies
+\\[ 
+\\gamma_L(X)\\op{wt}(X) + \\beta(e,X) \\ge a + b\\,\\op{azim}(X),
+\\] 
+\\item \\case{7907792228} The $2$-cell $X_2$ and two $3$-cells $X_1,X_3$
+that flank it along a spine $e$ satisfy
+\\[ 
+\\sum_{i=1}^3 \\left(\\gamma_L(X_i)\\op{wt}(X_i) + \\beta(e,X_i)\\right)\\ge a + b\\,\\sum_{i=1}^3\\op{azim}(X_i).
+\\] 
+\\end{itemize}\\wasitemize 
+Then 
+\\[  
+\\sum_{X\\in B} \\gamma(X,L)\\op{wt}(X) + \\beta(\\ee,X) \\ge a + b\\,\\op{azim}(B).
+\\] 
+It follows that
+\\[  
+\\Gamma(Z) \\ge 5 a + b\\, (2\\pi) > 0.
+\\] 
+");;
+
+add
+  {
+  idv = "ZTGIJCF0";
+ ineq = all_forall `ineq
+  [(&1,dummy,&1)]
+   ( &5 * a_spine5 + b_spine5 * &2 * pi  > &0)`;
+  doc =   "Calculation of constants for 5 or more leaves";
+    tags=[Marchal;Flypaper["OXLZLEZ";];Tex;Cfsqp];  
+  };;
+
+(* F4 *)
+
+let template_F4 = `\ y3m y3M y4m y4M y5m y5M y6m y6M w m. ineq
+   [(&2 * hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (y3m,y3,y3M);
+    (y4m,y4,y4M);
+    (y5m,y5,y5M);
+    (y6m,y6,y6M)]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun / &w + &m *beta_bump_lb  >
+       a_spine5 + b_spine5 * dih_y y1 y2 y3 y4 y5 y6) \/ 
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))`;;
+
+let mk_ineq_F4 i3 i4 i5 i6  = 
+  let x i = List.nth [`&2`; `&2 * hminus`;  `sqrt8`] i in
+  let X i = x (i+1) in
+  let mid i = if (i=1) then 1 else 0 in
+  let w = 1 + mid i3 + mid i4 + mid i5 + mid i6 in
+  let m = if (w =2) && (i4 = 1) then `1` else `0` in
+ mk_tplate template_F4 [x i3;X i3; x i4;X i4; x i5;X i5; x i6 ;X i6; mk_small_numeral w; m];;
+
+(*
+bug fixed July 15, 2011.  To many cases were being generated.
+0 <, changed to 1=
+*)
+
+let split_F4 i3 i4 i5 i6 = 
+  let split i = (1 = List.nth [1;0;i3;i4;i5;i6] i) in
+  filter split [0;1;2;3;4;5];;
+
+(* rewrote May 25, 2011
+let split_F4 i3 i4 i5 i6 = 
+  let sp ls i pos = if (i=1) then ls @ [pos] else ls in
+  let l0 = [0] in
+  let l3 = sp l0 i3 2 in
+  let l4 = sp l3 i4 3 in
+  let l5 = sp l4 i5 4 in
+    sp l5 i6 5;;
+*)
+
+let make_F4 i3 i4 i5 i6 = 
+   {
+    idv = Printf.sprintf "ZTGIJCF4 %d %d %d %d 1821661595" i3 i4 i5 i6;
+    ineq = mk_ineq_F4 i3 i4 i5 i6;
+    doc = "This is the $4$-cell inequality for five or more leaves.";
+    tags=(if (i3,i4,i5,i6)=(0,0,0,0) then [Tex] else [] ) @ [Marchal;Cfsqp;Flypaper["OXLZLEZ";];Xconvert;Penalty(50.0,500.0);Branch;Split (split_F4 i3 i4 i5 i6)];
+  };;
+
+ for i3=0 to 1 do 
+for i4 = 0 to 1 do
+ for i5 = 0 to 1 do
+ for i6 = 0 to 1 do
+   add(make_F4 i3 i4 i5 i6) done done done done;;
+
+(* F23 *)
+
+addtex(Comment,"",
+"This is one of the longest (and slowest running) computations in the entire list.  
+
+Changes:
+Dec 27, 2010. split into two cases _F23b _F23b2: 
+  by monotonicity of x4, either rad2=2 or x4=2.
+
+Dec 27, 2010, in template_F23c  upper bound on y4 changed from sqrt8 to 2,
+  by monotonicity,
+  Also rad2 constraint dropped.  (y_of_x rad2_x y1 y2 y3 y4 y5 y6 < &2)
+
+
+Symmetries:
+  horizontal: (edge 3,edge 5) <-> (edge 2,edge 6) 
+  vertical: (edge 2,edge 3) <-> (edge 6, edge 5)
+  By sqrt2 arguments, both triangles (1,3,5) and (1,2,6) have a subcritical edge:
+   eta[2hminus,2hminus,2hminus]^2 > 2.
+  In case (c), we apply a horizontal symmetry, so that Delta135 < Delta126.
+
+ 0* means [2,2 hminus], 1* means [2 hminus,sqrt8]
+Cases (i3,i5) : (0*,0*) (1*,0*) (0*,1*),  eliminate (1*,1*) by rad2 arguments.
+By applying a vertical symmetry, we may assume that y2 is subcritical: i2=0*.
+ (i3,i5,i6) : (0*,0*,0*), (0*,0*,1*), (1*,0*,0*), (1*,0*,1*), (0*,1*,0*), (0*,1*,1*) 
+  We eliminate (1*,0*,0*) -> (0*,1*,0*) by vertical symmetry, leaving
+   (0*,0*,0*), (0*,0*,1*), (1*,0*,1*), (0*,1*,0*), (0*,1*,1*)
+ (0*,0*,0*) (b) (d), symmetries are still available,
+    we may assume that (y2 < y6) (y2 < y3) (y2 < y5)
+   (c) assume (y2 < y6)
+ (0*,0*,1*) no symmetry
+ (1*,0*,1*) (b) (d), sym gives (y2<y5)
+    (c) no sym
+ (0*,1*,0*) (b) (d), sym -> (0*,0*,1*).
+   (c) no sym
+(0*,1*,1*) (b) (d), sym gives (y2<y3)
+   (c) no sym
+
+// old case list: (0*,0*,0*);(0*,0*,1*);(1*,0*,1*);(0*,1*,1*) // missing (0*,1*,0*)-c.
+
+Cases 
+(b): Delta126 > 0.14 Delta135 > 0.14, rad2=2.
+    Uses gamma23f_n.
+    Warning! The constraint rad2=2 is given in the tags, but not stated formally!
+(b2): Delta126 > 0.14, Delta135 > 0.14, y4=2.
+   Uses gamma23f_n.
+(c): Delta126 > 0.14, 0 < Delta135 < 0.14.
+   Uses gamma23f_126_03_n, justified by 'QITNPEA 4003532128 a'.
+   Rad disjunct dropped, allowing y4=2 by monotonicity.
+(_): Eliminated by c-symmetry: 0 < Delta126 < 0.14, Delta135 > 0.14
+(d): 0 < Delta126 < 0.14, 0 < Delta135 < 0.14.
+   Uses gamma23f_red_03, justified by 'QITNPEA 4003532128 a'
+");;
+
+let template_F23b = `\ y3m y3M y5m y5M y6m y6M w1 w2. ineq
+   [(&2 *  hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (y3m,y3,y3M);
+    (&2 ,y4, sqrt8 );
+    (y5m,y5,y5M);
+    (y6m,y6,y6M)]
+    ( (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < #0.14 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < #0.14) \/
+   (y_of_x rad2_x y1 y2 y3 y4 y5 y6 < &2) \/
+  (gamma23f_n y1 y2 y3 y4 y5 y6 w1 w2 sqrt2 lmfun    >
+       a_spine5 + b_spine5 * dih_y y1 y2 y3 y4 y5 y6)
+   )`;;
+
+let template_F23b2 = `\ y3m y3M y5m y5M y6m y6M w1 w2. ineq
+   [(&2 *  hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (y3m,y3,y3M);
+    (&2 ,y4, &2 );
+    (y5m,y5,y5M);
+    (y6m,y6,y6M)]
+    (
+    (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < #0.14 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < #0.14) \/
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 < &2) \/
+    (gamma23f_n y1 y2 y3 y4 y5 y6 w1 w2 sqrt2 lmfun    >
+       a_spine5 + b_spine5 * dih_y y1 y2 y3 y4 y5 y6)
+    )`;;
+
+let template_F23c = `\ y3m y3M y5m y5M y6m y6M (w1:num) (w2:num). ineq
+   [(&2 *  hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (y3m,y3,y3M);
+    (&2 ,y4, &2 );
+    (y5m,y5,y5M);
+    (y6m,y6,y6M)]
+    (
+    (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < #0.14 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 > #0.14)  \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < &0) \/
+    (gamma23f_126_03_n y1 y2 y3 y4 y5 y6 w1 sqrt2 lmfun    >
+       a_spine5 + b_spine5 * dih_y y1 y2 y3 y4 y5 y6)
+    )`;;
+
+let template_F23d = `\ y3m y3M y5m y5M y6m y6M (w1:num) (w2:num). ineq
+   [(&2 *  hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (y3m,y3,y3M);
+    (&2 ,y4, sqrt8 );
+    (y5m,y5,y5M);
+    (y6m,y6,y6M)]
+    ((gamma23f_red_03 y1 y2 y3 y4 y5 y6 sqrt2 lmfun    >
+       a_spine5 + b_spine5 * dih_y y1 y2 y3 y4 y5 y6) \/ 
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 < &2) \/
+    (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 > #0.14 ) \/
+    (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < &0 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 > #0.14)  \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < &0)   )`;;
+
+let ineq_F23 i3 i5 i6 j = 
+  let template = List.nth [template_F23b;template_F23b2;template_F23c;template_F23d] j in
+  let x i = List.nth [`&2`; `&2 * hminus` ; `sqrt8`] i in
+  let X i = x (i+1) in
+  let mid i = if (i>0) then 1 else 0 in
+  let m = mk_small_numeral in
+  let w1 = 1 +  mid i6 in
+  let w2 = 1 + mid i3 + mid i5 in
+    mk_tplate template  [x i3;X i3; x i5;X i5; x i6 ;X i6; m w1; m w2];; 
+
+let tags_F23 =
+  let min14 = 0.14 -. 1.0e-12 in
+  let max14 = 0.14 +. 1.0e-12 in
+  let tag_all = [Marchal;Cfsqp_branch 3;Flypaper["OXLZLEZ";];
+	       Xconvert;Penalty(200.0,5000.0);Branch;] in
+    [[Set_rad2;Delta126min min14;Delta135min min14] @ tag_all;
+     [Delta126min min14;Delta135min min14] @ tag_all;
+     [Delta126min min14;Delta135min (0.0);Delta135max max14] @ tag_all;
+     tag_all];;
+
+let make_F23 i j = 
+  let (i3,i5,i6) = List.nth [(0,0,0);(0,0,1);(1,0,1);(0,1,1);(0,1,0)] i in (* wlog by symmetry *)
+  let ext = List.nth ["b";"b2";"c";"d"] j in
+  let tg0 = (List.nth tags_F23 j) in
+  let tg = (if (i=0) then [Tex] else []) @ [Split (split_F4 i3 0 i5 i6)] @ tg0 in
+   {
+    idv = Printf.sprintf "ZTGIJCF23 %d %d %d 7907792228 %s" i3 i5 i6 ext;
+    ineq = ineq_F23 i3 i5 i6 j;
+    doc = "This is the $2$- and $3$-cell inequality for five or more leaves.";
+    tags=tg 
+  };;
+
+for j=0 to 3 do
+  for i = 0 to 3 do
+    add (make_F23 i j) done done ;;
+
+add(make_F23 4 2);;  (* 0,1,0 c was left out earlier, inserted May 29, 2011 *)
+
+
+(*
+let template_F23b2_tags= [Marchal;Cfsqp_branch 3;Delta126min c14;Delta135min c14];;
+
+let template_F23b_tags=Set_rad2 :: templateF23b2_tags;;
+
+let template_F23c_tags=
+  [Marchal;Cfsqp_branch 3;Delta126min c14;Delta135min (0.0);Delta135max c14u];;
+*)
+
+
+addtex(Section,"Packing -- Cluster Inequality -- Three and four leaves","");;
+
+addtex(Comment,"",
+"The cases of three and four leaves have been solved as a minor linear program.
+The details of the model and data for the linear program are contained in the
+glpk directory.  Here we simply list the nonlinear inequalities that get used.
+");;
+
+add
+{
+  idv = "BIXPCGW 9455898160";
+  ineq = all_forall `ineq
+   [(&2 * hminus, y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (&2,y4, &2 * hminus);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    (gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > -- #0.00569) `;
+  doc =   "
+     If $X$ is a quarter, then $\\gamma(X,L)\\ge -0.00569$.";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Cfsqp;Clusterlp;Tex;Xconvert;Branch;Split[0]];
+};;
+
+add
+{
+  idv = "BIXPCGW 2300537674";
+  ineq = all_forall `ineq
+   [(&2 * hminus, y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (&2,y4, &2 * hminus);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > &0) \/ (dih_y y1 y2 y3 y4 y5 y6 < #1.65))`;
+  doc =   "
+     If $X$ is a quarter such that $\\gamma(X,L)\\le 0$, then $\\dih(X) < 1.65$.";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Cfsqp;Clusterlp;Tex;Xconvert;Branch;Split[0]];
+};;
+
+add
+{
+  idv = "BIXPCGW 6652007036 a";
+  ineq = all_forall `ineq
+   [(&2 * hminus, y1, &2 * hplus);
+    (&2,y2, sqrt8);
+    (&2,y3, sqrt8);
+    (&2,y4, sqrt8);
+    (&2,y5, sqrt8);
+    (&2,y6, sqrt8)
+   ]
+   ((dih_y y1 y2 y3 y4 y5 y6 < #2.8) \/ (delta_y y1 y2 y3 y4 y5 y6 < &60))`;
+  doc =   "
+     If $X$ is a $4$-cell then  $\\dih(X) < 2.8$.";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Cfsqp;Clusterlp;Tex;Xconvert];
+};;
+
+add
+{
+  idv = "BIXPCGW 7080972881 a";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2 * hminus,y2, sqrt8);
+    (&2,y3, sqrt8);
+    (&2,y4, sqrt8);
+    (&2,y5, sqrt8);
+    (&2,y6, sqrt8)
+   ]
+    ((dih_y y1 y2 y3 y4 y5 y6 < #2.3) \/ (delta_y y1 y2 y3 y4 y5 y6 < &60))`;
+  doc =   "
+     If $X$ is a $4$-cell with a critical edge next to the spine, then  $\\dih(X) < 2.3$.";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Cfsqp;Clusterlp;Tex;Xconvert];
+};;
+
+add
+{
+  idv = "BIXPCGW 1738910218 a";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, sqrt8);
+    (&2,y3, sqrt8);
+    (&2,y4, &2 * hplus);
+    (&2,y5, sqrt8);
+    (&2,y6, sqrt8)
+   ]
+   ( (dih_y y1 y2 y3 y4 y5 y6 < #2.3) \/ (delta_y y1 y2 y3 y4 y5 y6 < &60))`;
+  doc =   "
+     If $X$ is a $4$-cell with a critical edge opposite spine, then  $\\dih(X) < 2.3$.";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Cfsqp;Clusterlp;Tex;Xconvert];
+};;
+
+add
+{
+  idv = "BIXPCGW b";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, sqrt8);
+    (&2,y3, sqrt8);
+    (&2,y4, &2 * hplus);
+    (&2,y5, sqrt8);
+    (&2,y6, sqrt8)
+   ]
+   ( (delta4_y y1 y2 y3 y4 y5 y6 > &0) \/ (delta_y y1 y2 y3 y4 y5 y6 > &60) \/ (delta_y y1 y2 y3 y4 y5 y6 < &0))`;
+  doc =   "
+     If $X$ is a $4$-cell with a critical edge opposite spine, then  $\\dih(X) < 2.3$.";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Cfsqp;Clusterlp;Penalty (500.0,500.0);Tex;Xconvert];
+};;
+
+add
+{
+  idv = "BIXPCGW 7274157868";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, sqrt8);
+    (&2,y3, sqrt8);
+    (&2,y4, sqrt8);
+    (&2,y5, sqrt8);
+    (&2,y6, sqrt8)
+   ]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun > #0.0057) \/
+    (dih_y y1 y2 y3 y4 y5 y6 < #2.3))`;
+  doc =   "
+     If $X$ is a $4$-cell with a single critical edge (the spine), and if $\\dih(X)\\ge 2.3$,
+      then  $\\gamma(X,L) > 0.0057$.";
+  tags=[Marchal;Flypaper["OXLZLEZ";];Cfsqp;Clusterlp;Tex;Xconvert;Branch;Split[0;1;2;3;4;5]];
+};;
+
+add
+{
+  idv = "QITNPEA 5653753305";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (&2,y4, &2 * hminus);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    (gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun + #0.0659 
+      - #0.042*dih_y y1 y2 y3 y4 y5 y6 > #0.0)`;
+  doc =   "
+     This is an inequality for quarters used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Flypaper["OXLZLEZ"];Clusterlp;Tex;Xconvert;Branch;Split[0]];
+};;
+
+add
+{
+  idv = "QITNPEA 9939613598";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (&2 * hplus,y4, sqrt8);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun - #0.00457511 
+    - #0.00609451*dih_y y1 y2 y3 y4 y5 y6 > #0.0) \/
+   (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))`;
+  doc =   "
+     This is an inequality for nonquarter $4$-cells of weight $1$ used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Flypaper["OXLZLEZ"];Clusterlp;Tex;Xconvert;Branch;Split[0]];
+};;
+
+add
+{
+  idv = "QITNPEA 4003532128 a";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, sqrt8);
+    (sqrt2,y3,sqrt2);
+    (sqrt2,y4,sqrt2);
+    (sqrt2,y5,sqrt2);
+    (&2,y6, sqrt8)
+   ]
+    (
+     (delta4_y y1 y2 y3 y4 y5 y6 > &25) \/
+   (delta_y y1 y2 y3 y4 y5 y6 > #0.14) \/
+    (delta_y y1 y2 y3 y4 y5 y6 < &0) )`;
+  doc =   "
+     This gives an upper bound $0.08$ on the dihedral angle of the $3$-cell.
+     This is an inequality for $23$-cells used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch];
+  (* d4 > 25 > Tan[Pi/2 - 0.03] Sqrt[4 0.14] ==> dih <= 0.03. *)
+};;
+
+ignore
+{
+  idv = "QITNPEA 4003532128 b";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (#2.1 ,y4, sqrt8);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    ( (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < #0.14 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < #0.14) \/
+  (y_of_x rad2_x y1 y2 y3 y4 y5 y6 < &2) \/
+   (gamma23f_n y1 y2 y3 y4 y5 y6 1 1 sqrt2 lmfun - #0.00457511 
+    - #0.00609451*dih_y y1 y2 y3 y4 y5 y6 > #0.0) 
+   )`;
+  doc =   "
+     Note the lower bound on $y_4$ is $2.1$.
+     This is an inequality for $23$-cells used to prove the cluster inequality.
+     We may use monotonicity so that rad2 is exactly 2.
+     May 25, 2011. Replaced with symmetrical version.";
+  tags=[Marchal;Cfsqp;Cfsqp_branch 3;
+         Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch;Split[0];
+        Set_rad2;Delta126min (0.14-. 1.0e-12);
+	 Delta135min (0.14 -. 1.0e-12)];
+};;
+
+(* Dec 27, 2010 tested to see if 'QITNPEA 4003532128 b' can be 
+   split into a left-and-right inequality.  It cannot be done
+    with a correction term of the form 
+    + #0.004 * (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 - delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2)  
+*)
+
+add
+{
+  idv = "QITNPEA 4003532128 b sym";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (#2.1 ,y4, sqrt8);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    ( (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < #0.14 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < #0.14) \/
+  (y_of_x rad2_x y1 y2 y3 y4 y5 y6 < &2) \/
+ (y2 < y3) \/ (y2 < y5) \/ (y2 < y6) \/
+     (gamma23f_n y1 y2 y3 y4 y5 y6 1 1 sqrt2 lmfun - #0.00457511 
+    - #0.00609451*dih_y y1 y2 y3 y4 y5 y6 > #0.0) 
+   )`;
+  doc =   "
+     Note the lower bound on $y_4$ is $2.1$.
+     This is an inequality for $23$-cells used to prove the cluster inequality.
+     We may use monotonicity so that rad2 is exactly 2.
+    By symmetry we may assume that y2 is the longest of y2,y3,y5,y6";
+  tags=[Marchal;Cfsqp;Cfsqp_branch 6;
+         Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch;Split[0];
+        Set_rad2;Delta126min (0.14-. 1.0e-12);
+	 Delta135min (0.14 -. 1.0e-12)];
+};;
+
+
+add
+{
+  idv = "QITNPEA 4003532128 b2";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (#2.1 ,y4, #2.1);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    ( (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < #0.14 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < #0.14) \/
+  (y_of_x rad2_x y1 y2 y3 y4 y5 y6 < &2) \/
+   (gamma23f_n y1 y2 y3 y4 y5 y6 1 1 sqrt2 lmfun - #0.00457511 
+    - #0.00609451*dih_y y1 y2 y3 y4 y5 y6 > #0.0)
+   )`;
+  doc =   "
+     Note the lower bound on $y_4$ is $2.1$.
+     This is an inequality for $23$-cells used to prove the cluster inequality.
+     We may use monotonicity so that $y_4=2.1$";
+(* Dec 27, 2010 tested to see if it can be split into a left-and-right inequality.  It cannot be done
+    with a correction term of the form 
+    + #0.004 * (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 - delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2)  *)
+  tags=[Marchal;Cfsqp;Cfsqp_branch 3;Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch;Split[0];Delta126min (0.14-. 1.0e-12);
+	 Delta135min (0.14 -. 1.0e-12)];
+};;
+
+add
+{
+  idv = "QITNPEA 4003532128 c";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2 ,y2, &2 * hminus);
+     (&2,y3, &2 * hminus);
+    (#2.1 ,y4, #2.1);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    (    (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < #0.14 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < &0) \/  
+   (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 > #0.14) \/
+   ( gamma23f_126_03_n y1 y2 y3 y4 y5 y6 1 sqrt2 lmfun  
+       - #0.00457511 
+    - #0.00609451*dih_y y1 y2 y3 y4 y5 y6 > #0.0)
+ )`;
+  doc =   "
+   Inititally, $y_4$ extends to $\\sqrt8$, but we use monotonicity
+to reduced it to the lower bound.
+     This gives an upper bound $0.08$ on the dihedral angle of the $3$-cell.
+     This is an inequality for $23$-cells used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Cfsqp_branch 3;Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch;Split[0];Delta126min (0.14 -. 1.0e-12);
+    Delta135min (0.0); Delta135max(0.14 +. 1.0e-12)];
+  (* d4 > 67 > Tan[Pi/2 - 0.03] Sqrt[4 1.0] ==> dih <= 0.03. *)
+ (*   (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 > #0.14)  \/ dropped 12/23/2010 *)
+};;
+
+add
+{
+  idv = "QITNPEA 4003532128 d";
+(* removed gamma3f y1 y2 y6 sqrt2 lmfun +  from term on Nov 29, 2010 *)
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+     (&2,y3, &2 * hminus);
+    (#2.1 ,y4, sqrt8);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    ((   
+      gamma23f_red_03 y1 y2 y3 y4 y5 y6 sqrt2 lmfun   
+	 - #0.00457511 
+    - #0.00609451*dih_y y1 y2 y3 y4 y5 y6 > #0.0) \/
+    (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 > #0.14 ) \/
+    (delta_y y1 y2 sqrt2 sqrt2 sqrt2 y6 < &0 ) \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 > #0.14)  \/
+    (delta_y y1 sqrt2 y3 sqrt2 y5 sqrt2 < &0)   )`;
+  doc =   "
+     This gives an upper bound $0.08$ on the dihedral angle of the $3$-cell.
+     This is an inequality for $23$-cells used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Clusterlp;Tex;Flypaper["OXLZLEZ"];Xconvert;Branch;Split[0]];
+  (* d4 > 25 > Tan[Pi/2 - 0.08] Sqrt[4 1.0] ==> dih <= 0.08. *)
+};; 
+
+
+add{
+  idv = "QITNPEA 3725403817";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (#2 ,y4, #2.1);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    (dih_y y1 y2 y3 y4 y5 y6 < #1.56) `;
+  doc =   "
+     This is an inequality for $2$- and $3$-cells used to prove the cluster inequality.
+      Note that $y_4\\le 2.1$.
+     ";
+  tags=[Marchal;Cfsqp;Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert];
+};;
+
+
+add
+{
+  idv = "QITNPEA 6206775865";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (#2 ,y4, &2 * hminus);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    (gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun + #0.0142852 - #0.00609451 *dih_y y1 y2 y3 y4 y5 y6 > #0.0) `;
+  doc =   "
+     This is an inequality for quarters used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch;Split[0]];
+};;
+
+add
+{
+  idv = "QITNPEA 5814748276";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (#2 ,y4, &2 * hminus);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    (gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun - #0.00127562 + #0.00522841 * dih_y y1 y2 y3 y4 y5 y6 > #0.0) `;
+  doc =   "
+     This is an inequality for quarters used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch;Split[0]];
+};;
+
+
+add
+{
+  idv = "QITNPEA 3848804089";
+  ineq = all_forall `ineq
+   [(&2 * hminus,y1, &2 * hplus);
+    (&2,y2, &2 * hminus);
+    (&2,y3, &2 * hminus);
+    (#2 ,y4, &2 * hminus);
+    (&2,y5, &2 * hminus);
+    (&2,y6, &2 * hminus)
+   ]
+    (gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun - #0.161517 + #0.119482* dih_y y1 y2 y3 y4 y5 y6 > #0.0) `;
+  doc =   "
+     This is an inequality for quarters used to prove the cluster inequality.";
+  tags=[Marchal;Cfsqp;Clusterlp;Flypaper["OXLZLEZ"];Tex;Xconvert;Branch;Split[0]];
+};;
+
+(* beta_bump_lb -> beta_bump_y 2010-06-23, false otherwise on (i3,i4,i5,i6) = (0,1,0,0) 
+    beta_bump_y -> beta_bump_force_y 2010-09-23 
+*)
+
+let mk_QITNPEA i3 i4 i5 i6  = 
+  let template = `\ y3m y3M y4m y4M y5m y5M y6m y6M w m. ineq
+   [(&2 * hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (y3m,y3,y3M);
+    (y4m,y4,y4M);
+    (y5m,y5,y5M);
+    (y6m,y6,y6M)]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun / &w + &m * beta_bump_force_y y1 y2 y3 y4 y5 y6 
+        - #0.0105256 +  #0.00522841*dih_y y1 y2 y3 y4 y5 y6 > #0.0) \/
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))` in
+  let x i = List.nth [`&2`; `&2 * hminus`; `sqrt8`] i in
+  let X i = x (i+1) in
+  let mid i = if (i=1) then 1 else 0 in
+  let w = 1 + mid i3 + mid i4 + mid i5 + mid i6 in
+  let m = if (w =2) && (i4 = 1) then `1` else `0` in
+ mk_tplate template [x i3;X i3; x i4;X i4; x i5;X i5; x i6 ;X i6; mk_small_numeral w; m];;
+
+let add_QITNPEA i3 i4 i5 i6 = if (i3+i4+i5+i6 = 0) then () else
+  add{
+    idv = Printf.sprintf "QITNPEA4 %d %d %d %d 3803737830" i3 i4 i5 i6;
+    ineq = mk_QITNPEA i3 i4 i5 i6;
+    doc = "This is a $4$-cell (nonquarter) inequality for four leaves.";
+    tags=(if (i3,i4,i5,i6)=(0,0,0,1) then [Tex] else []) @ [Marchal;Cfsqp;Xconvert;Flypaper["OXLZLEZ";];Penalty(50.0,500.0);Branch;Split (split_F4 i3 i4 i5 i6)];
+  };;
+
+ for i3=0 to 1 do 
+for i4 = 0 to 1 do
+ for i5 = 0 to 1 do
+ for i6 = 0 to 1 do
+   add_QITNPEA i3 i4 i5 i6;   done done done done;;
+
+
+let mk_tm0 i3 i4  = 
+  let template = `\ y3m y3M y4m y4M w m. ineq
+   [(&2 * hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (y3m,y3,y3M);
+    (y4m,y4,y4M);
+    (&2 ,y5,&2 *hminus);
+    (&2 ,y6,&2 * hminus)]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun / &w + &m *beta_bump_lb 
+         > #0.0057) \/
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))` in
+  let x i = List.nth [`&2`; `&2 * hminus`; `&2 * hplus`; `sqrt8`] i in
+  let X i = x (i+1) in
+  let mid i = if (i=1) then 1 else 0 in
+  let w = 1 + mid i3 + mid i4 in
+  let m = if (w =2) && (i4 = 1) then `1` else `0` in
+ mk_tplate template [x i3;X i3; x i4;X i4; mk_small_numeral w; m];;
+
+let add0 i3 i4 = if (i3+i4 = 0) then () else
+  add{
+    idv = Printf.sprintf "QITNPEA1 %d %d 9063653052" i3 i4 ;
+    ineq = mk_tm0 i3 i4 ;
+    doc = "This is a $4$-cell (nonquarter) inequality.  The four cell is assumed to
+    have exactly one {\\it small} face.";
+    tags=(if (i3+i4=1) then [Tex] else []) @ [Marchal;Cfsqp;Flypaper["OXLZLEZ";];Xconvert;Penalty(50.0,500.0);Branch;Split (split_F4 i3 i4 0 0)]; 
+  };;
+
+for i3=1 to 2 do (* start at 1 to force the triangle (y1,y3,y5) not to be small *)
+for i4 = 0 to 2 do
+   add0 i3 i4   done done;;
+
+add{
+    idv = "QITNPEA 2134082733"  ;
+    ineq =  all_forall  `ineq [(&2 * hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (&2 ,y3,&2 * hminus);
+    (&2 * hminus,y4,sqrt8);
+    (&2 ,y5,&2 * hminus);
+    (&2 ,y6,&2 * hminus)]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun / &2 + beta_bump_lb 
+         - #0.213849 + #0.119482*dih_y y1 y2 y3 y4 y5 y6 > #0.0 ) \/
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2))`;
+    doc = "This is a $4$-cell (nonquarter) inequality.  The two edges along the
+     spine are small.";
+    tags=[Marchal;Cfsqp;Flypaper["OXLZLEZ";];Clusterlp;Xconvert;Tex;Branch;Split[0;3]];
+};;
+
+add{
+    idv = "QITNPEA  5400790175 a"  ;
+    ineq =  all_forall  `ineq [(&2 * hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (&2 ,y3,&2 * hminus);
+    (&2 * hminus,y4,sqrt8);
+    (&2 ,y5,&2 * hminus);
+    (&2 ,y6,&2 * hminus)]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun / &2 + beta_bump_lb  > #0.0057)  \/
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2) \/
+    (eta_y y1 y2 y6 pow 2 < #1.34 pow 2))`;
+    doc = "This is a $4$-cell (nonquarter) and adjacent $3$-cell inequality.  
+     The edges along the   spine are small.";
+    tags=[Marchal;Cfsqp;Flypaper["OXLZLEZ";];Clusterlp;Xconvert;Tex;Branch;Split[0;3]];
+};;
+
+add{
+    idv = "QITNPEA  5400790175 b"  ;
+    ineq =  all_forall  `ineq [(&2 * hminus, y1, &2 * hplus);
+    (&2 ,y2, &2 *hminus);
+    (&2 ,y3,&2 * hminus);
+    (&2 * hminus,y4,sqrt8);
+    (&2 ,y5,&2 * hminus);
+    (&2 ,y6,&2 * hminus)]
+    ((gamma4fgcy y1 y2 y3 y4 y5 y6 lmfun / &2 + beta_bump_lb 
+       + gamma3f y1 y2 y6 sqrt2 lmfun > #0.0057)  \/
+    (y_of_x rad2_x y1 y2 y3 y4 y5 y6 > &2) \/
+    (eta_y y1 y2 y6 pow 2 > #1.34 pow 2))`;
+    doc = "This is a $4$-cell (nonquarter) and adjacent $3$-cell inequality.  
+     The edges along the   spine are small.";
+    tags=[Marchal;Cfsqp;Flypaper["OXLZLEZ";];Clusterlp;Xconvert;Tex;Branch;Split[0;3]];
+};;
+
+
+(* Add all the inequalities from ineqdata3q1h.hl *)
+
+let add3q1h  = 
+  let records = Ineqdata3q1h.records in
+  let mk_ineq = Ineqdata3q1h.mk_ineq in
+  let mk_3q1h case r = 
+    let d = List.nth records r in
+    let f = mk_ineq case d in
+      { ineq = f; 
+	idv = Printf.sprintf "OXLZLEZ 6346351218 %d %d" case r; 
+	tags=(if (case,r)=(0,0) then [Tex] else []) @ [Marchal;Clusterlp;Branch;Flypaper["OXLZLEZ";]] @
+	  (if (case >0) then [Xconvert] else []); 
+	doc = "One of many inequalities for four leaves, three quarters, and
+         simplex of weight $1/2$"; } in
+  let mk_3q1hc r = map (fun c -> mk_3q1h c r) (0-- 4) in
+  let mk_3q1h_all = List.flatten(map (mk_3q1hc) (0--((List.length records)-1))) in
+    map add mk_3q1h_all;;
+
+
+addtex (Section,"Packing -- Polyhedra","");;
+
+add{
+idv = "1965189142 34";
+tags = [Tex;Flypaper["BIEFJHU"]];
+doc = "This inequality gives a linear lower bound on the area of a regular spherical polygon, when $k\\ge 34$";
+ineq = all_forall `ineq
+ [
+  (#1.0,x1,#1.26); (&1,x2,&1);(&1,x3,&1);(&1,x4,&1);(&1,x5,&1);(&1,x6,&1)
+ ]
+  (#0.591 - #0.0331 * &34 + #0.506 * lfun_y1 x1 x2 x3 x4 x5 x6 < &0)`
+};;
+
+add{
+idv = "1965189142 a";
+tags = [Tex;Flypaper["BIEFJHU"]];
+doc = "
+%old idv: 7991525482, eqn:alin, 
+This inequality gives a linear lower bound on the area of a regular spherical polygon, when $k\\le 34$.
+Let $L$ be given by Definition~\\ref{def:L}.
+Let
+\\[ 
+g(h) = \\arccos(h/2) - \\pi/6.
+\\] 
+Let
+\\[ 
+\\op{reg}(a,k) = 2\\pi - 2 k (\\arcsin(\\cos(a)\\sin(\\pi/k))).
+\\] 
+Then
+\\[ 
+\\op{reg}(g(h),k) \\ge c_0 + c_1 k + c_2 L(h),\\quad
+k = 3,4,\\ldots,\\quad 1\\le h\\le \\hm.
+\\] 
+ The integer parameter $k$ has been replaced with a real variable.   If $k\\ge34$, then
+the right-hand-side is negative and the inequality is immediate.
+ The trig identity 
+ \\[
+  \\cos(\\acos (h/2) - \\pi/6)) = h \\sqrt(3)/4 + \\sqrt(1-(h/2)^2)/2.
+ \\]
+  has been used to simplify the inequality.
+ ";
+ineq = all_forall `ineq
+ [
+  (#1.0,x1,#1.26);
+  (#3.0,x2,#34.0);(&1,x3,&1);(&1,x4,&1);(&1,x5,&1);(&1,x6,&1)
+ ]
+        (&2 * pi - &2 * asnFnhk x1 x2 x3 x4 x5 x6 > #0.591 - #0.0331 * x2 + #0.506 * lfun_y1 x1 x2 x3 x4 x5 x6)`
+};;
+
+add{
+idv = "8055810915";
+tags = [Tex;Flypaper["WAZLDCD"]];
+doc = "This inequality gives the nonoverlap of disks on the unit sphere.";
+ineq = all_forall `ineq
+ [
+  (&4, x1, #2.52 pow 2);
+   (&4,x2,&4);
+   ((&2 * h0) pow 2,x3,(&2 * h0) pow 2);
+   (&1,x4,&1);
+   (&1,x5,&1);
+   (&1,x6,&1)
+ ]
+ (acs_sqrt_x1_d4 x1 x2 x3 x4 x5 x6 - pi/ (&6) + #0.797 < arclength_x_123 x1 x2 x3 x4 x5 x6)`;
+};;
+
+add{
+idv = "6096597438 a";
+tags = [Tex;Flypaper["UKBRPFE"]];
+doc = "This inequality gives a linear lower bound on the area of a regular spherical polygon, when $k\\ge 64$";
+ineq = all_forall `ineq
+ [
+  (#1.0,h,#1.0)
+ ]
+  (#0.591 - #0.0331 * &64 + #0.506 * lfun (&1) + #1.0 < &0)`
+};;
+
+add{
+idv = "6096597438 b";
+tags = [Tex;Flypaper["UKBRPFE"]];
+doc = "
+% old idv cc:alin2. 8540377696 
+Let
+\\[ 
+g(h) = \\arccos(h/2) - \\pi/6.
+\\] 
+Let
+\\[ 
+\\op{reg}(a,k) = 2\\pi - 2 k (\\arcsin(\\cos(a)\\sin(\\pi/k))).
+\\] 
+Let
+\\[ a'=0.797\\approx \\arc(2,2,2\\hm)-g(\\hm).\\]  Then for $k=3,~4$,\\dots
+\\[ \\op{reg}(a',k) \\ge c_0 + c_1 k + c_2 L(1) +c_3.\\] 
+This inequality gives a linear lower bound on the area of a regular spherical polygon, when $k\\le 64$.
+ The integer parameter $k$ has been replaced with a real variable.   If $k\\ge64$, then
+the right-hand-side is negative and the inequality is immediate.
+ ";
+ineq = all_forall `ineq
+ [
+  (#3.0,x1,#64.0);
+  (&1,x2,&1);  (&1,x3,&1);  (&1,x4,&1);  (&1,x5,&1);  (&1,x6,&1)
+ ]    
+        (&2 * pi - &2 * asn797k x1 x2 x3 x4 x5 x6 > 
+          #0.591 - #0.0331 * x1 + #0.506 * lfun (&1) + #1.0)`
+};;
+
+addtex(Section,"Local Fan -- Standard Fan","");;
+
+add{
+idv = "4717061266";
+ineq = all_forall `ineq
+[
+(&2, y1, &2*h0);
+(&2, y2, &2*h0);
+(&2, y3, &2*h0);
+(&2, y4, &2*h0);
+(&2, y5, &2*h0);
+(&2, y6, &2*h0)
+]
+  (delta_y y1 y2 y3 y4 y5 y6 > &0)`;
+tags = [Flypaper["TVAWGDR"];Tex;Xconvert];
+doc = "A certain configuration of four points cannot be coplanar.";
+};;
+
+addtex(Section,"Local Fan"," -- Minimal Fan");;
+
+
+
+add{
+idv = "OMKYNLT 3336871894";
+tags = [Tex;Cfsqp;Eps 1.0e-8;Flypaper["OMKYNLT"];Xconvert;Sharp];
+doc = "This is the nonnegativity of $\\tau$ on triangles.  It is a sharp inequality.";
+ineq =  all_forall `ineq
+    [
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+    (&2,y4,&2);
+    (&2,y5,&2);
+    (&2,y6,&2)
+    ]
+( taum y1 y2 y3 y4 y5 y6 >= #0.0)`;
+};;
+
+add{
+idv = "OMKYNLT 2 1";
+tags = [Cfsqp;Flypaper["OMKYNLT"];Tex;Xconvert];
+doc = "This is the inequality of $\\tau > d(r,s)$ on triangles.";
+ineq =  all_forall `ineq
+    [
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+      (&2,y4,&2);
+      (&2,y5,&2);
+      (&2 * h0, y6, &2 * h0)
+    ]
+( taum y1 y2 y3 y4 y5 y6  > tame_table_d 2 1)`;
+};;
+
+add{
+idv = "OMKYNLT 1 2";
+tags = [Cfsqp;Flypaper["OMKYNLT"];Tex;Xconvert];
+doc = "
+  %old idv 8880534953
+  This is the inequality of $\\tau > d(r,s)$ on triangles.  Note that
+  the optimal point is not $(2,2,2)$ as one might have expected.";
+ineq =  all_forall `ineq
+    [
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+      (&2,y4,&2);
+      (&2 * h0,y5,&2 * h0);
+      (&2 * h0,y6,&2 * h0)
+    ]
+( taum y1 y2 y3 y4 y5 y6 > tame_table_d 1 2)`;
+};;
+
+(* added add on May 8, 2011 *)
+
+add{
+idv = "OMKYNLT 0 3";
+tags = [Cfsqp;Flypaper["OMKYNLT"];Tex;Xconvert];
+doc = "This is the inequality of $\\tau > d(r,s)$ on triangles.";
+ineq =  all_forall `ineq
+    [
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+    (#2.52,y4,#2.52);
+    (#2.52,y5,#2.52);
+    (#2.52,y6,#2.52)
+]
+( taum y1 y2 y3 y4 y5 y6 > tame_table_d 0 3)`;
+};;
+
+add{
+idv = "SDCCMGA a";
+doc = "This is an arclength estimate.";
+tags = [Tex;Flypaper["SDCCMGA"];Cfsqp;Xconvert];
+ineq = all_forall `ineq
+ [
+  (&2,y1,#2.52);
+   (&1,y2,&1);(&1,y3,&1);(&1,y4,&1);(&1,y5,&1);(&1,y6,&1)
+ ]
+ (arclength_y1 (&2) (&2 * h0) y1 y2 y3 y4 y5 y6 + 
+  arclength_y1  (&2) (&2 * h0) y1 y2 y3 y4 y5 y6 <
+   arclength_y1 (&2*h0) (&2 * h0) y1 y2 y3 y4 y5 y6 + 
+    &2 * arc_hhn)`;
+};;
+
+add{
+idv = "SDCCMGA b";
+doc = "This is an arclength estimate.";
+tags = [Tex;Flypaper["SDCCMGA"];Cfsqp;Xconvert];
+ineq = all_forall `ineq
+ [
+  (&2,y1,#2.52);
+   (&1,y2,&1);(&1,y3,&1);(&1,y4,&1);(&1,y5,&1);(&1,y6,&1)
+ ]
+ (arclength_y1 (&2) (&2 * h0) y1 y2 y3 y4 y5 y6 + 
+  arclength_y1 (&2) (&2 * h0) y1 y2 y3 y4 y5 y6 <
+   arclength_y1 (&2*h0) (&2) y1 y2 y3 y4 y5 y6 + 
+  pi / &3   + arc_hhn)`;
+};;
+
+
+add{
+idv = "JNTEFVP 1";
+doc = "A  quad with a reflex vertex has a diagonal less than $\\sqrt8$.  This allows us
+to split a quad into two simplices.  By extreme edge we can assume the diagonal
+is $2h_0$ or $\\sqrt8$.  The case $2h_0$ is already done with the triangles.";
+tags=[Tex;Cfsqp;Flypaper["JNTEFVP"]];
+ineq = all_forall `ineq
+ [
+   (&4,x1,(&2 * h0) pow 2);
+   (&4,x2,(&2 * h0) pow 2);
+   (&4,x3,(&2 * h0) pow 2);
+   (&4,x4,(&2 * h0) pow 2);
+   (&4,x5,(&2 * h0) pow 2);
+   (&8 ,x6, (&4 * h0) pow 2)
+ ]
+  (delta_x4 x1 x2 x3 x4 x5 x6 > &0)`;
+};;
+
+addtex (Section,"Tame Hypermap","");;
+
+add{
+ idv = "4652969746 1";
+ doc = "This is the calculation of the (p,q)=(5,0) entry in tame table b.";
+ tags=[Cfsqp;Tex;Tablelp;Flypaper["KCBLRQC"];Xconvert];
+ ineq = all_forall `ineq
+ [
+  (&2,y1,#2.52);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (#2.1771,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+ ]
+ (taum y1 y2 y3 y4 y5 y6 > #0.04)`;
+};;
+
+
+add{
+ idv = "4652969746 2";
+ doc = "This is the calculation of the (p,q)=(5,0) entry in tame table b.";
+ tags=[Cfsqp;Tex;Tablelp;Flypaper["KCBLRQC"];Xconvert];
+ ineq = all_forall `ineq
+ [
+  (&2,y1,#2.52);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (&2,y4,#2.1771);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+ ]
+ (taum y1 y2 y3 y4 y5 y6 - #0.312 * (dih_y y1 y2 y3 y4 y5 y6 - &2 * pi/ &5)  > #0.04 / &5)`;
+};;
+
+
+(* interval arithmetic bounds DART4 *)
+
+add{
+  idv = "2570626711";
+  doc="";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Xconvert;Tex];
+  ineq = all_forall `ineq
+    [ 
+      (#2.0,y1,&2 * h0);
+      (#2.0,y2,&2 * h0);
+      (#2.0,y3,&2 * h0);
+      (&2 * h0,y4,&2 * h0);
+      (#2.0,y5,&2 * h0);
+      (#2.0,y6,&2 * h0)]
+   (dih_y y1 y2 y3 y4 y5 y6 > #1.15)`;
+};;
+
+addtex(Section,"Linear Programs","");;
+
+let dart_classes = ref [];;
+
+let define_dart t = 
+  let th = new_definition t in
+  let _ = (dart_classes := th :: (!dart_classes)) in
+     th;;
+
+(*
+   The bounds on the four vertices $\\v_1,\\ldots,\\v_4$ gives
+   the top simplex bound 
+   \\[
+   y_4 \\le \\op{edge\\_flat}(2h_0,2h_0,2h_0,2h_0,2h_0) < 4.37
+   \\
+*)
+
+let dart_std4 = define_dart `dart_std4 y1 y2 y3 y4 y5 y6 y7 y8 y9 = 
+      [
+      (#2.0,y1,&2 * h0);
+      (#2.0,y2,&2 * h0);
+      (#2.0,y3,&2 * h0);
+      (&2 * h0,y4,#4.37);
+      (#2.0,y5,&2 * h0);
+      (#2.0,y6,&2 * h0);
+      (#2.0,y7,&2 * h0);
+      (#2.0,y8,&2 * h0);
+      (#2.0,y9,&2 * h0)]`;;
+
+
+ignore{
+  idv = "8673686234";
+  doc="Special Nonlinear Inequality for Lp.  This is not autogenerated.
+   $y_1$ is the shorter diagonal.
+   Ran for 95 million steps and it didn't pass. Replaced with -a, -b, -c below.";
+  tags = [Cfsqp;Tex;Xconvert;Deprecated];
+  ineq =  all_forall `ineq [
+  (sqrt8,y1,#3.0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (sqrt8,y4,&4 * h0);
+    (&2,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+    ((y2 + y3 + y5 + y6 - #7.99 > #2.75 * (y1 - sqrt8)) \/
+     (delta_y y1 y2 y3 y4 y5 y6 < &0) \/
+     (y4 < y1))  `;
+};;
+
+
+add{
+  idv = "8673686234 a";
+  doc="Special Nonlinear Inequality for Lp.  This is not autogenerated. See head.mod.
+   $y_1$ is the shorter diagonal.
+  Cut out a piece near {sqrt8,2,2,sqrt8,2,2}.";
+  tags = [Cfsqp;Lp_aux "8673686234";Tex;Xconvert];
+  ineq =  all_forall `ineq [
+  (sqrt8,y1,#3.0);
+    (&2,y2,#2.07);
+    (&2,y3,#2.07);
+    (sqrt8,y4,&4 * h0);
+    (&2,y5,#2.07);
+    (&2,y6,#2.07)
+  ]
+    ((y2 + y3 + y5 + y6 - #7.99 - #0.00385 * delta_y y1 y2 y3 y4 y5 y6 >   #2.75 * ((y1 + y4)/ &2 - sqrt8)) 
+    )  `;
+};;
+
+add{
+  idv = "8673686234 b";
+  doc="Special Nonlinear Inequality for Lp.  This is not autogenerated.
+   $y_1$ is the shorter diagonal.  This is the case $y_4\\ge 3$.
+   Stretch $y_4$ until $\\Delta=0$, then contract $y_4$ within the plane until $y_4=3$.";
+  tags = [Cfsqp;Lp_aux "8673686234";Tex;Xconvert];
+  ineq =  all_forall `ineq [
+  (sqrt8,y1,#3.0);
+    (#2.07,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (#3.0,y4,#3.0);
+    (&2,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+    ((y2 + y3 + y5 + y6 - #7.99 > #2.75 * (y1 - sqrt8)) \/
+     (delta_y y1 y2 y3 y4 y5 y6 < &0)  )  `;
+};;
+
+add{
+  idv = "8673686234 c";
+  doc="Special Nonlinear Inequality for Lp.  This is not autogenerated.
+   $y_1$ is the shorter diagonal.  This case takes $y_4\\le 3$.";
+  tags = [Cfsqp;Lp_aux "8673686234";Tex;Xconvert];
+  ineq =  all_forall `ineq [
+  (sqrt8,y1,#3.0);
+    (#2.07,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (sqrt8,y4,#3.0);
+    (&2,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+    ((y2 + y3 + y5 + y6 - #7.99 >   #2.75 * ((y1 + y4)/ &2 - sqrt8)) \/
+   (y2 + y3 + y5 + y6 - #7.99 - #0.00385 * delta_y y1 y2 y3 y4 y5 y6 >   #2.75 * ((y1 + y4)/ &2 - sqrt8)) \/
+     (delta_y y1 y2 y3 y4 y5 y6 < &0)  )  `;
+};;
+
+
+addtex(Comment,"Quad convexity justification","
+We can use dimension reduction methods to reduce the number of variables.
+  This is the reduced version that occurs when the cross diagonal is minimal.
+  This reduction allows nonconvex deformations.  The Dim_red_backsym extremalizes
+  the edges x8 and x9.  However, if the cross-diag $\\le \\sqrt8$, then by
+  geometric considerations, the cross-diagonal is interior to the quad, and the
+  subdivision is justified. 
+");;
+
+add{
+  idv = "7043724150 a";
+  doc="We can use dimension reduction methods to reduce the number of variables.";
+(* \/ (delta_y y4 y9 y6 sqrt8   y5 y8 < &0) *)
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Lp;Xconvert;Tex;Dim_red_backsym;Quad_cluster 0.001];
+  ineq =all_forall `ineq (dart_std4 y1 y2 y3 y4 y5 y6 y7 y8 y9)
+(( tauq y1 y2 y3 y4 y5 y6 y7 y8 y9 + #4.72 * dih_y y1 y2 y3 y4 y5 y6 - #6.248 > #0.0) \/
+  ( enclosed y1 y5 y6 y4 y2 y3 y7 y8 y9 < sqrt8 ) )`;
+};;
+
+add{
+  idv = "7043724150 a reduced";
+  doc="We can use dimension reduction methods to reduce the number of variables.
+   This is the reduced version that occurs when the cross diagonal is minimal.
+     See  'Quad convexity justification' comment.
+  ";
+  tags = [Cfsqp;Lp_aux "7043724150 a";Xconvert;Tex;];
+  ineq =all_forall `ineq [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&2,y4,&2 * h0);
+    (&2 * h0,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+( taum y1 y2 y3 y4 y5 y6 + #4.72 * dih_y y1 y2 y3 y4 y5 y6 - #6.248 / &2 > #0.0)`;
+};;
+
+
+add
+ {
+  idv = "6944699408 a";
+  doc="We can use dimension reduction methods to reduce the number of variables.";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Lp;Xconvert;Tex;Dim_red_backsym;Quad_cluster 0.0005];
+  ineq =  all_forall `ineq (dart_std4 y1 y2 y3 y4 y5 y6 y7 y8 y9)
+(( tauq y1 y2 y3 y4 y5 y6 y7 y8 y9 + #0.972 * dih_y y1 y2 y3 y4 y5 y6 -  #1.707 > #0.0) \/
+   ( enclosed y1 y5 y6 y4 y2 y3 y7 y8 y9 < sqrt8 ))`;
+};;
+
+add{
+  idv = "6944699408 a reduced";
+  doc="We can use dimension reduction methods to reduce the number of variables.
+  This is the reduced version that occurs when the cross diagonal is minimal.
+     See  'Quad convexity justification' comment.
+ " ;
+  tags = [Cfsqp;Lp_aux  "6944699408 a";Xconvert;Tex];
+  ineq =  all_forall `ineq [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&2,y4,&2 * h0);
+    (&2 * h0,y5,sqrt8);
+    (&2,y6,&2 * h0)
+  ]
+( taum y1 y2 y3 y4 y5 y6 + #0.972 * dih_y y1 y2 y3 y4 y5 y6 -  #1.707 / &2 > #0.0)`;
+};;
+
+(* constant 1.433 corrected 2010-06-14 *)
+
+add{
+  idv = "4240815464 a";
+  doc="";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Tex;Xconvert;Lp;Penalty(10000.0,500.0);Dim_red_backsym;Quad_cluster 0.0001];
+  ineq = all_forall `ineq (dart_std4 y1 y2 y3 y4 y5 y6 y7 y8 y9)
+(( tauq y1 y2 y3 y4 y5 y6 y7 y8 y9 + 
+   #0.7573 *dih_y y1 y2 y3 y4 y5 y6 - #1.433 > #0.0) \/
+  ( enclosed y1 y5 y6 y4 y2 y3 y7 y8 y9 < sqrt8 ) \/
+( delta_y y1 y2 y3 y4 y5 y6 < &0) \/
+( delta_y y7 y2 y3 y4 y8 y9 < &0)) `;
+};;
+
+add{
+  idv = "4240815464 a reduced";
+  doc="We can use dimension reduction methods to reduce the number of variables.
+  This is the reduced version that occurs when the cross diagonal is minimal.
+     See  'Quad convexity justification' comment. ";
+  tags = [Cfsqp;Lp_aux "4240815464 a";Tex;Xconvert];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&2,y4,&2 * h0);
+    (&2 * h0,y5,sqrt8);
+    (&2,y6,&2 * h0)
+  ]
+( taum y1 y2 y3 y4 y5 y6 + 
+   #0.7573 *dih_y y1 y2 y3 y4 y5 y6 - #1.433 / &2 > #0.0)`;
+};;
+
+
+add{
+  idv = "3862621143 revised";
+  doc="Revised May 24, 2011 for speed by extending enclosed to 3.01 and y4 to 2.9.
+   See  'Quad convexity justification' comment.";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Tex;Xconvert;Lp;Penalty(10000.0,500.0);Dim_red_backsym;Quad_cluster 0.05]; (* was Quad_cluster 0.0005 *)
+  ineq = all_forall `ineq (dart_std4 y1 y2 y3 y4 y5 y6 y7 y8 y9)
+(( tauq y1 y2 y3 y4 y5 y6 y7 y8 y9 - #0.453 * dih_y y1 y2 y3 y4 y5 y6 +  #0.777 > #0.0) \/
+ ( enclosed y1 y5 y6 y4 y2 y3 y7 y8 y9 < #3.01 )  \/
+( delta_y y1 y2 y3 y4 y5 y6 < &0) \/
+  (y4 < #2.9) \/
+( delta_y y7 y2 y3 y4 y8 y9 < &0)) `;
+};;
+
+add
+ {
+  idv = "3862621143 side";
+  doc= "Do side splits out to 3.01.";
+  tags = [Cfsqp;Lp_aux "3862621143 revised";Tex;Xconvert];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&2,y4,&2 * h0);
+    (&2 * h0,y5,#3.01);
+    (&2,y6,&2 * h0)
+  ]
+( taum y1 y2 y3 y4 y5 y6 - #0.453 * dih_y y1 y2 y3 y4 y5 y6 +  #0.777 / &2  > #0.0)`;
+};;
+
+add
+ {
+  idv = "3862621143 front";
+  doc= "Do front half when y4 <= 2.9 ";
+  tags = [Cfsqp;Lp_aux "3862621143 revised";Tex;Xconvert];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&2 * h0,y4,#2.9);
+    (&2 ,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+( taum y1 y2 y3 y4 y5 y6 + tame_table_d 2 1 - #0.453 * dih_y y1 y2 y3 y4 y5 y6 +  #0.777   > #0.0)`;
+};;
+
+add
+ {
+  idv = "3862621143 back";
+  doc= "
+   Back half when y4 <= 2.0.
+  We know taum > tame_table_d 2 1, when y4 in [sqrt8,3.01].  This extends a bit further.
+  We could optimize by extremizing y4,y5,y6 and using known triangle calculations.";
+  tags = [Cfsqp;Lp_aux "3862621143 revised";Tex;Xconvert];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (sqrt8,y4,#3.01);
+    (&2 ,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+( taum y1 y2 y3 y4 y5 y6    > tame_table_d 2 1)`;
+};;
+
+ignore
+{
+  idv = "3862621143 a";
+  doc="This was replaced with '3862621143 revised'.
+    The revision is mathematically equivalent, but runs about 6 hours faster.";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Tex;Xconvert;Lp;Penalty(10000.0,500.0);Dim_red_backsym;Quad_cluster 0.0005;Deprecated];
+  ineq = all_forall `ineq (dart_std4 y1 y2 y3 y4 y5 y6 y7 y8 y9)
+(( tauq y1 y2 y3 y4 y5 y6 y7 y8 y9 - #0.453 * dih_y y1 y2 y3 y4 y5 y6 +  #0.777 > #0.0) \/
+ ( enclosed y1 y5 y6 y4 y2 y3 y7 y8 y9 < sqrt8 )  \/
+( delta_y y1 y2 y3 y4 y5 y6 < &0) \/
+( delta_y y7 y2 y3 y4 y8 y9 < &0)) `;
+};;
+
+ignore
+ {
+  idv = "3862621143 a reduced";
+  doc= "This has also been revised.
+     See  'Quad convexity justification' comment.";
+  tags = [Cfsqp;Lp_aux "3862621143 a";Tex;Xconvert;Deprecated];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&2,y4,&2 * h0);
+    (&2 * h0,y5,sqrt8);
+    (&2,y6,&2 * h0)
+  ]
+( taum y1 y2 y3 y4 y5 y6 - #0.453 * dih_y y1 y2 y3 y4 y5 y6 +  #0.777 / &2  > #0.0)`;
+};;
+
+add{
+  idv = "5691615370";
+  doc="This is one of the hand-entered LP inequalities (perimZ) in head.mod.
+   \\claim{If a quadrilateral standard region has both diagonals at least $3$, then
+  the perimeter is at least $8.472$.}  Otherwise,
+  some configuration has perimeter $\\le8.472$.   
+  We may disregard the origin $\\orz$ and
+  show the result holds for $\\v_1,\\ldots,\\v_4$.  We may increase a diagonal,
+  with fixed perimeter, until the four points are coplanar.  We may contract the
+  diagonals until both equal $3$.  This calculation provides the desired inequality.
+
+  May 25, 2011. Symmetry added. Wlog, y2 is the longest edge among y2,y3,y5,y6.
+  Wlog, y3 is the longest among y3,y6.
+  ";
+  tags = [Cfsqp;Lp_aux "5691615370";Lp_aux "9563139965D";Tex;Xconvert];
+  ineq = all_forall `ineq
+  [
+  (#3.0,y1,#3.0);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (#3.0,y4,#3.0);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]
+  ((delta_y y1 y2 y3 y4 y5 y6 < &0) \/ (y2 + y3 + y5 + y6 > #8.472) \/
+   (y2 < y3) \/ (y2 < y5) \/ (y2 < y6 ) \/ (y3 < y6))`;
+};;
+
+
+(* Second derivative (2986512...) dimension reduction is used on quad
+   to reduce $y_4$ (the diagonal) to 3. *)
+
+(*
+let dart4_diag3_a = define_dart `dart4_diag3_a y1 y2 y3 y4 y5 y6 y7 y8 y9 =
+    [
+  (&2,y1,#2.52);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (&3,y4,&2 * #2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52);
+  (&2,y7,#2.52);
+  (&2,y8,#2.52);
+  (&2,y9,#2.52)
+  ]`;;
+*)
+
+let dart4_diag3_b = define_dart `dart4_diag3_b y1 y2 y3 y4 y5 y6 y7 y8 y9 =
+    [
+  (&2,y1,#2.52);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (&3,y4,&3);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52);
+  (&2,y7,#2.52);
+  (&2,y8,#2.52);
+  (&2,y9,#2.52)
+  ]`;;
+
+add{
+  idv = "9563139965D";
+  doc = "This is the special Lp estimate for quadrilaterals with both diagonals greater
+   than 3.0.  Dimension reduction can be used to simplify.
+   Derived from c,d,e,f below";
+  tags = [Cfsqp;Xconvert;Lp;Tex;Penalty(5.0,500.0);Derived ["d e f"]];
+  ineq = all_forall `ineq (dart4_diag3_b y1 y2 y3 y4 y5 y6 y7 y8 y9)
+((tauq y1 y2 y3 y4 y5 y6 y7 y8 y9  > #0.467) \/ 
+  (enclosed  y1 y5 y6 y4 y2 y3 y7 y8 y9 < &3 ))`;
+};;
+
+
+(* Change to 9563139965, change the constant 0.496 to 0.467, then use dimension
+    reduction below to prove with 5D calcs. Dec 18, 2010.  *)
+
+
+add
+ {
+  idv = "9563139965 d";
+  doc = "This is the special Lp estimate for quadrilaterals with both diagonals greater
+   than 3.0.  Dimension reduction can be used to simplify.  This is the reduced case
+   with both diagonals 3.0.  The correction term is based in ineq (5691615...).
+   It holds for both simplices if the appropriate diagonal is selected.
+   This is the case where all top edges of quad are at most 2.472.";
+  tags = [Cfsqp;Lp_aux "9563139965D";Xconvert;Tex];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&3,y4,&3);
+    (&2,y5,#2.472);
+    (&2,y6,#2.472)
+  ]
+((taum y1 y2 y3 y4 y5 y6  + #0.5 * ( #8.472 / &2 - y5 - y6) > #0.467 / &2))`;
+};;
+
+add
+ {
+  idv = "9563139965 e";
+  doc = "This is the secondary estimate for quadrilaterals with both diagonals greater
+   than 3.0.  Dimension reduction can be used to simplify.  This is the reduced case
+   with both diagonals 3.0.  This is the case where some top edges is at least 2.472.
+   First triangle of split.";
+  tags = [Cfsqp;Lp_aux "9563139965D";Xconvert;Tex];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&3,y4,&3);
+    (#2.467,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+((taum y1 y2 y3 y4 y5 y6   > #0.467 - #0.115))`;
+};;
+
+add
+ {
+  idv = "9563139965 f";
+  doc = "This is the secondary estimate for quadrilaterals with both diagonals greater
+   than 3.0.  Dimension reduction can be used to simplify.  This is the reduced case
+   with both diagonals 3.0.  This is the case where some top edges is at least 2.472.
+   Second triangle of split.";
+  tags = [Cfsqp;Lp_aux "9563139965D";Xconvert;Tex];
+  ineq = all_forall `ineq  [
+    (&2,y1,&2 * h0);
+    (&2,y2,&2 * h0);
+    (&2,y3,&2 * h0);
+    (&3,y4,&3);
+    (&2,y5,&2 * h0);
+    (&2,y6,&2 * h0)
+  ]
+((taum y1 y2 y3 y4 y5 y6   >  #0.115))`;
+};;
+
+
+addtex(Section,"Linear Programs"," -- dart\_ std3");;
+
+let dart_std3 = define_dart `dart_std3 y1 y2 y3 y4 y5 y6 =  [ 
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+      (#2.0,y4,#2.52);
+      (#2.0,y5,#2.52);
+      (#2.0,y6,#2.52)]`;;
+
+
+
+(* Tame table B inequalities *)
+
+add{
+  idv = "5735387903";
+  doc="";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3 y1 y2 y3 y4 y5 y6)
+   (dih_y y1 y2 y3 y4 y5 y6 > #0.852)`;
+};;
+
+
+(* changed from #1.893, to #1.9, for reasons I forget,
+    thales, 2010-02-28, back again 2010-06-15. *)
+
+add{
+  idv = "5490182221";
+  doc="";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3 y1 y2 y3 y4 y5 y6)
+   (dih_y y1 y2 y3 y4 y5 y6 < #1.893)`;
+};;
+
+
+(*
+let tame_hypermap_list = 
+  map (fun t -> (getexact t).ineq) ["5735387903";"5490182221";"2570626711"];;
+*)
+
+add{
+  idv = "3296257235";
+  doc="";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Xconvert;Lp;Tex];
+  ineq =  all_forall `ineq (dart_std3 y1 y2 y3 y4 y5 y6)
+ (taum y1 y2 y3 y4 y5 y6 + #0.626 * dih_y y1 y2 y3 y4 y5 y6 - #0.77 > #0.0)`;
+};;
+
+add{
+  idv = "8519146937";
+  doc="";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3 y1 y2 y3 y4 y5 y6)
+    ( taum y1 y2 y3 y4 y5 y6 -  #0.259 * dih_y y1 y2 y3 y4 y5 y6 + #0.32 > #0.0)`;
+};;
+
+add{
+  idv = "4667071578";
+  doc="";
+  tags = [Cfsqp;Tablelp;Flypaper["KCBLRQC"];Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3 y1 y2 y3 y4 y5 y6)
+    ( taum y1 y2 y3 y4 y5 y6 -  #0.507 * dih_y y1 y2 y3 y4 y5 y6 + #0.724 > #0.0)`;
+};;
+
+add{
+  idv = "1395142356";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq
+    (dart_std3 y1 y2 y3 y4 y5 y6)
+   ( taum y1 y2 y3 y4 y5 y6 + #0.001 - #0.18 * (y1 + y2 + y3 - #6.0) -
+  #0.125 * (y4 + y5 + y6 - #6.0) > #0.0)`;
+};;
+
+add{
+  idv = "7394240696";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq
+    (dart_std3 y1 y2 y3 y4 y5 y6)
+( sol_y y1 y2 y3 y4 y5 y6 - #0.55125 - #0.196 * (y4 + y5 + y6 - #6.0) +
+  #0.38 * (y1 + y2 + y3 - #6.0) > #0.0)`;
+};;
+
+add{
+  idv = "7726998381";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq =  all_forall `ineq
+    (dart_std3 y1 y2 y3 y4 y5 y6) 
+( -- sol_y y1 y2 y3 y4 y5 y6 + #0.5513 + 
+  #0.3232 * (y4 + y5 + y6 - #6.0) -
+  #0.151 * (y1 + y2 + y3 - #6.0)  > #0.0)`;
+};;
+
+add{
+  idv = "4047599236";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3 y1 y2 y3 y4 y5 y6)
+( (dih_y y1 y2 y3 y4 y5 y6) - #1.2308 +  
+  (#0.3639 * (y2 + y3 + y5 + y6 - #8.0)) -
+  (#0.235 * (y1 - #2.0)) -(#0.685 * (y4 - #2.0)) > #0.0)`;
+};;
+
+add{
+  idv = "3526497018";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq
+    (dart_std3 y1 y2 y3 y4 y5 y6)
+  ( (--dih_y y1 y2 y3 y4 y5 y6) + #1.231 - 
+  (#0.152 * (y2 + y3 + y5 + y6 - #8.0))+
+  (#0.5 * (y1 - #2.0)) + (#0.773 * (y4 - #2.0))> #0.0)`; 
+};;
+
+add{
+  idv = "5957966880";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq =  all_forall `ineq (dart_std3 y1 y2 y3 y4 y5 y6)
+( (rhazim y1 y2 y3 y4 y5 y6) - #1.2308 +  
+  (#0.3639 * (y2 + y3 + y5 + y6 - #8.0)) -
+  (#0.6 * (y1 - #2.0)) -(#0.685 * (y4 - #2.0)) > #0.0)`;
+};;
+
+
+
+
+addtex(Section,"Linear Programs"," -- dartXYZ");;
+
+(*more interval arithmetic on nonstandard triangles*)
+
+let dartX = define_dart `dartX y1 y2 y3 y4 y5 y6 = 
+   [ 
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+      (#2.52,y4,#2.52);
+      (#2.0,y5,#2.52);
+      (#2.0,y6,#2.52)]`;;
+
+add{
+  idv = "3020140039";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dartX y1 y2 y3 y4 y5 y6)
+( (dih_y y1 y2 y3 y4 y5 y6) - #1.629 +  
+  (#0.402 * (y2 + y3 + y5 + y6 - #8.0)) -
+  (#0.315 * (y1 - #2.0))  > #0.0)`;
+};;
+
+let dartY  = define_dart `dartY y1 y2 y3 y4 y5 y6 = 
+  [ 
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+      (sqrt8,y4,sqrt8);
+      (#2.0,y5,#2.52);
+      (#2.0,y6,#2.52)]`;;
+
+add{
+  idv = "9414951439";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dartY y1 y2 y3 y4 y5 y6)
+( (dih_y y1 y2 y3 y4 y5 y6) - #1.91 +  
+  (#0.458 * (y2 + y3 + y5 + y6 - #8.0)) -
+  (#0.342 * (y1 - #2.0))  > #0.0)` ;
+};;
+
+let dart4_diag3  = define_dart `dart4_diag3 y1 y2 y3 y4 y5 y6 = 
+   [ 
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+      (#3.0,y4,#3.0);
+      (#2.0,y5,#2.52);
+      (#2.0,y6,#2.52)]`;;
+
+add{
+  idv = "9995621667";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = 
+ all_forall `ineq (dart4_diag3 y1 y2 y3 y4 y5 y6)
+( (dih_y y1 y2 y3 y4 y5 y6) - #2.09 +  
+  (#0.578 * (y2 + y3 + y5 + y6 - #8.0)) -
+  (#0.54 * (y1 - #2.0))  > #0.0)`;
+};;
+
+(*branch flat inequality*)
+
+let apex_flat  = define_dart `apex_flat y1 y2 y3 y4 y5 y6 = 
+   [ 
+      (#2.0,y1,#2.52);
+      (#2.0,y2,#2.52);
+      (#2.0,y3,#2.52);
+      (#2.52,y4,sqrt8);
+      (#2.0,y5,#2.52);
+      (#2.0,y6,#2.52)]`;;
+
+add{
+  idv = "6988401556";
+  doc="We can use extremal edge properties and the tame table D calculations
+    to reduce to the case where $y_4=\\sqrt8$ and $y_5,y_6$ are extremal.";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (apex_flat y1 y2 y3 y4 y5 y6) 
+(taum y1 y2 y3 y4 y5 y6 > #0.103)`;
+};;
+
+add{
+  idv = "8248508703";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq =  
+ all_forall `ineq (apex_flat y1 y2 y3 y4 y5 y6)
+( (taum y1 y2 y3 y4 y5 y6) - #0.1 -  
+  (#0.265 * (y5 + y6 - #4.0)) -
+  (#0.06 * (y4 - #2.52)) - (#0.16 * (y1 - #2.0)) - 
+  (#0.115 * (y2 + y3 - #4.0))  > #0.0)`;
+};;
+
+add{
+  idv = "3318775219";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = 
+ all_forall `ineq (apex_flat y1 y2 y3 y4 y5 y6)
+( (dih_y y1 y2 y3 y4 y5 y6) - #1.629 +  
+  (#0.414 * (y2 + y3 + y5 + y6 - #8.0)) -
+  (#0.763 * (y4 - #2.52)) - 
+  (#0.315 * (y1 - #2.0))  > #0.0)`;
+};;
+
+add{
+  idv = "9922699028";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = 
+ all_forall `ineq (apex_flat y1 y2 y3 y4 y5 y6)
+( (--dih_y y1 y2 y3 y4 y5 y6) + #1.6294 -  
+  (#0.2213 * (y2 + y3 + y5 + y6 - #8.0)) +
+  (#0.913 * (y4 - #2.52)) + 
+  (#0.728 * (y1 - #2.0))  > #0.0)`;
+};;
+
+add{
+  idv = "5000076558";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Lpsymmetry;Tex];
+  ineq = 
+ all_forall `ineq (apex_flat y1 y2 y3 y4 y5 y6)
+( (dih2_y y1 y2 y3 y4 y5 y6) - #1.083 +  
+  (#0.6365 * (y1 - #2.0)) -
+  (#0.198 * (y2 - #2.0)) + 
+  (#0.352 * (y3 - #2.0)) + 
+  (#0.416 * (y4 - #2.52)) - 
+  (#0.66 * (y5 - #2.0)) + 
+  (#0.071 * (y6 - #2.0)) > #0.0)`;
+};;
+
+add{
+  idv = "9251360200";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = 
+ all_forall `ineq (apex_flat y1 y2 y3 y4 y5 y6)
+( (rhazim y1 y2 y3 y4 y5 y6) - #1.629 -  
+  (#0.866 * (y1 - #2.0)) +
+  (#0.3805 * (y2 + y3 -  #4.0)) - 
+  (#0.841 * (y4 - #2.52)) + 
+  (#0.501 * (y5 + y6 -  #4.0))  > #0.0)`;
+};;
+
+add{
+  idv = "9756015945";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Lpsymmetry;Tex];
+  ineq = 
+ all_forall `ineq (apex_flat y1 y2 y3 y4 y5 y6)
+( (rhazim2 y1 y2 y3 y4 y5 y6) - #1.08 +  
+  (#0.6362 * (y1 - #2.0)) -
+  (#0.565 * (y2 - #2.0)) + 
+  (#0.359 * (y3 - #2.0)) + 
+  (#0.416 * (y4 - #2.52)) - 
+  (#0.666 * (y5 - #2.0)) + 
+  (#0.061 * (y6 - #2.0)) > #0.0)`;
+};;
+
+let apex_A = define_dart `apex_A y1 y2 y3 y4 y5 y6 = 
+  [(#2.0, y1, #2.52);
+(#2.0, y2, #2.52);
+(#2.0, y3, #2.52);
+(#2.0, y4, #2.52);
+(#2.52, y5, sqrt8);
+(#2.52, y6, sqrt8)]`;;
+
+add{
+  idv = "8082208587";
+  doc="We can use extremal edge properties and 
+    the tame table D (1,2) calculations
+    to reduce to the case where $y_4=\\sqrt8$ and $y_5,y_6$ are extremal.";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (apex_A y1 y2 y3 y4 y5 y6)
+(taum y1 y2 y3 y4 y5 y6 > #0.2759)`;
+};;
+
+add{
+  idv = "5760733457";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (apex_A y1 y2 y3 y4 y5 y6)
+   (dih_y y1 y2 y3 y4 y5 y6 - #1.0705 -( #0.1 * (y1 - #2)) + 
+   (#0.424 * (y2 - #2.0)) + 
+   (#0.424 * (y3 - #2.0)) - 
+   (#0.594 * (y4 - #2.0)) + 
+   (#0.124 * (y5 - #2.52)) + 
+   (#0.124 * (y6 - #2.52)) > #0.0)`;
+};;
+
+add{
+  idv = "2563100177";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = 
+all_forall `ineq (apex_A y1 y2 y3 y4 y5 y6)
+( rhazim y1 y2 y3 y4 y5 y6 - #1.0685 - 
+(#0.4635 * (y1 - #2.0)) + 
+(#0.424 * (y2 - #2.0)) + 
+(#0.424 * (y3 - #2.0)) - 
+(#0.594 * (y4 - #2.0)) + 
+(#0.124 * (y5 - #2.52)) + 
+(#0.124 * (y6 - #2.52)) > #0.0)`;
+};;
+
+add{
+  idv = "7931207804";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = 
+all_forall `ineq (apex_A y1 y2 y3 y4 y5 y6)
+( taum y1 y2 y3 y4 y5 y6 - #0.27 +
+(#0.0295 * (y1 - #2.0)) - 
+(#0.0778 * (y2 - #2.0)) - 
+(#0.0778 * (y3 - #2.0)) - 
+(#0.37 * (y4 - #2.0)) - 
+(#0.27 * (y5 - #2.52)) - 
+(#0.27 * (y6 - #2.52)) > #0.0)`;
+};;
+
+let dart_std3_small = define_dart `dart_std3_small y1 y2 y3 y4 y5 y6 = 
+ [(#2.0, y1, #2.52);
+(#2.0, y2, #2.52);
+(#2.0, y3, #2.52);
+(#2.0, y4, #2.25);
+(#2.0, y5, #2.25);
+(#2.0, y6, #2.25)]`;;
+
+add{
+  idv = "9225295803";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq =  
+all_forall `ineq (dart_std3_small y1 y2 y3 y4 y5 y6)
+(taum y1 y2 y3 y4 y5 y6 + #0.0034 - 
+(#0.166 * (y1 + y2 + y3 - #6.0)) - 
+(#0.22 * (y4 + y5 + y6 - #6.0)) > #0.0)`; 
+};;
+
+add{
+  idv = "9291937879";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq =  
+all_forall `ineq  (dart_std3_small y1 y2 y3 y4 y5 y6)
+(dih_y y1 y2 y3 y4 y5 y6 - #1.23 - 
+(#0.235 * (y1 - #2.0)) + 
+(#0.362 * (y2 + y3 - #4.0)) - 
+(#0.694 * (y4 - #2.0)) + 
+(#0.26 * (y5 + y6 - #4.0)) > #0.0)`; 
+};;
+
+(* same domain but extra disjunct *)
+let dart_std3_big = define_dart `dart_std3_big = dart_std3`;;
+
+add{
+  idv = "7761782916";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq =  
+all_forall `ineq  (dart_std3_big y1 y2 y3 y4 y5 y6)
+((taum y1 y2 y3 y4 y5 y6 - #0.05 - (#0.137 * (y1 + y2 + y3 - #6.0)) 
+  - (#0.17 * (y4 + y5 + y6 - #6.25)) > #0.0)\/
+(y4 + y5 + y6 < #6.25))`; 
+};;
+
+add{
+  idv = "6224332984";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3_big y1 y2 y3 y4 y5 y6)
+((sol_y y1 y2 y3 y4 y5 y6 - #0.589 + 
+(#0.39 * (y1 + y2 + y3 - #6.0)) - 
+(#0.235 * (y4 + y5 + y6 - #6.25)) > #0.0) \/
+(y4 + y5 + y6 < #6.25))`;
+};;
+
+let apex_sup_flat = define_dart `apex_sup_flat y1 y2 y3 y4 y5 y6 =
+ [(#2.0, y1, #2.52);
+(#2.0, y2, #2.52);
+(#2.0, y3, #2.52);
+(sqrt8, y4, #3.0);
+(#2.0, y5, #2.52);
+(#2.0, y6, #2.52)]
+ `;;
+
+add{
+  idv = "5451229371";
+  doc="";
+  tags = [Cfsqp;Tex;Xconvert;Lp];
+  ineq =  all_forall `ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+    (taum y1 y2 y3 y4 y5 y6 - #0.11
+    - #0.14132 * (y1 + (y2 + y3) / &2 - &4) 
+       - #0.38 * (y5 + y6 - &4) > &0)`;
+};;
+
+
+add{
+  idv = "4840774900";
+  doc="";
+  tags = [Cfsqp;Tex;Xconvert;Lp];
+  ineq =  all_forall `ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+  (
+ taum y1 y2 y3 y4 y5 y6      - #0.1054 
+    - #0.14132*(y1 + y2 / &2 + y3 / &2 - &4)
+    - #0.36499*(y5 +y6 - &4) > &0)`;
+};;
+
+add{
+  idv = "1642527039";
+  doc="";
+  tags = [Cfsqp;Tex;Xconvert;Lp];
+  ineq =  all_forall `ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+  (
+ taum y1 y2 y3 y4 y5 y6      - #0.128 
+  - #0.053*((y5 +y6 - &4) - (#2.75/ &2)*(y4 - sqrt8)) > &0)`; 
+};;
+
+add{
+  idv = "7863247282";
+  doc="";
+  tags = [Cfsqp;Tex;Xconvert;Lp];
+  ineq =  all_forall `ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+  (taum y1 y2 y3 y4 y5 y6  - #0.053*((y5 +y6 - &4) - (#2.75/ &2)*(y4 - sqrt8))
+    - #0.12 
+    - #0.14132*(y1 + y2 / &2 + y3 / &2 - &4)
+    - #0.328*(y5 +y6 - &4) > &0)`;  (* corrected 2010-06-22, thales, was y4 + y5, was >= *)
+};;
+
+add{
+  idv = "7718591733";
+  doc="";
+  tags = [Cfsqp;Tex;Xconvert;Lp];
+  ineq =  all_forall `ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+  (dih2_y y1 y2 y3 y4 y5 y6  - #0.955 
+   - #0.2356*(y2 - &2)
+       + #0.32*(y3 - &2) + #0.792*(y1 - &2)
+   - #0.707*(y5 - &2) 
+        + #0.0844*(y6 - &2) + #0.821*(y4 - sqrt8) > &0)`;  (* corrected 2010-06-22, was >= *)
+};;
+
+add{
+  idv = "3566713650";
+  doc="";
+  tags = [Cfsqp;Tex;Xconvert;Lp];
+  ineq =  all_forall `ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+  (
+  -- dih_y y1 y2 y3 y4 y5 y6  + #1.911 + #1.01 *(y1  - &2)
+  - #0.284*(y2 +y3 +y5 +y6 - &8)
+   + #1.07*(y4 - sqrt8) > &0)`; (* was >= *)
+};;
+
+add{
+  idv = "1085358243";
+  doc="";
+  tags = [Cfsqp;Tex;Xconvert;Lp];
+  ineq =  all_forall `ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+  (
+  dih_y y1 y2 y3 y4 y5 y6  - #1.903 - #0.4*(y1  - &2)
+  + #0.49688*(y2 +y3 +y5 +y6 - &8)
+   -(y4 -sqrt8) > &0)`;
+};;
+
+(* use this if there is no smallness constraint *)
+
+let dart_std3_mini = define_dart `dart_std3_mini y1 y2 y3 y4 y5 y6 =
+  [
+  (#2,y1,#2.18);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.25);
+  (&2,y5,#2.25);
+  (&2,y6,#2.25)
+  ]` ;;  
+
+
+add{
+  idv = "9229542852";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3_mini y1 y2 y3 y4 y5 y6)
+(dih_y y1 y2 y3 y4 y5 y6 - #1.230 - 
+(#0.2357 * (y1 - #2.0)) + 
+(#0.2493 * (y2 + y3 - #4.0)) - 
+(#0.682 * (y4 - #2.0)) + 
+(#0.3035 * (y5 + y6 - #4.0)) > #0.0)`;
+};;
+
+add{
+  idv = "1550635295";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3_mini y1 y2 y3 y4 y5 y6)
+(--(dih_y y1 y2 y3 y4 y5 y6) + #1.232 + 
+(#0.261 * (y1 - #2.0)) - 
+(#0.203 * (y2 + y3 - #4.0)) + 
+(#0.772 * (y4 - #2.0)) - 
+(#0.191 * (y5 + y6 - #4.0)) > #0.0)`;
+};;
+
+add{
+  idv = "4491491732";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3_mini y1 y2 y3 y4 y5 y6)
+(taum y1 y2 y3 y4 y5 y6 + #0.0008 - 
+(#0.1631 * (y1 + y2 + y3 - #6.0)) - 
+(#0.2127 * (y4 + y5 + y6 - #6.0)) > #0.0)`;
+};;
+
+let  apex_flat_hll  = define_dart 
+ `apex_flat_hll  y1 y2 y3 y4 y5 y6 = [(#2.18, y1, #2.52);
+(#2.0, y2, #2.18);
+(#2.0, y3, #2.18);
+(#2.52, y4, sqrt8);
+(#2.0, y5, #2.52);
+(#2.0, y6, #2.52)]`;;
+
+add{
+  idv = "8282573160";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (apex_flat_hll  y1 y2 y3 y4 y5 y6)
+(taum y1 y2 y3 y4 y5 y6 - #0.1413 - 
+(#0.214 * (y1 - #2.18)) - 
+(#0.1259 * (y2 + y3 - #4.0)) - 
+(#0.067 * (y4 - #2.52)) - 
+(#0.241 * (y5 + y6 - #4.0)) > #0.0)`;
+};;
+
+let dart_std3_big_200_218   = define_dart 
+ `dart_std3_big_200_218  y1 y2 y3 y4 y5 y6 = [(#2.0, y1, #2.18);
+(#2.0, y2, #2.18);
+(#2.0, y3, #2.18);
+(#2.0, y4, #2.52);
+(#2.0, y5, #2.52);
+(#2.0, y6, #2.52)]`;;
+
+add{
+  idv = "8611785756";
+  doc="";
+  tags = [Cfsqp;Xconvert;Lp;Tex];
+  ineq = all_forall `ineq (dart_std3_big_200_218  y1 y2 y3 y4 y5 y6)
+((sol_y y1 y2 y3 y4 y5 y6 - #0.589 + 
+(#0.24 * (y1 + y2 + y3 - #6.0)) - 
+(#0.16 * (y4 + y5 + y6 - #6.25)) > #0.0) \/
+(y4 + y5 + y6 < #6.25))`;
+};;
+
+(* 181212899 is applied in six different ways, each with a different dart class. *)
+let dart_template = `\dart_class y4min y4max. dart_class 
+  (y1:real) (y2:real) (y3:real) (y4:real) (y5:real) (y6:real) = 
+ [
+      (#2.0, y1, #2.52);
+      (#2.0, y2, #2.52);
+      (#2.0, y3, #2.52);
+      (y4min, y4, y4max);
+      (#2.0, y5, #2.52);
+      (#2.52, y6, sqrt8)]`;;
+
+let dart_template_reverse = `\dart_class y4min y4max. dart_class 
+  (y1:real) (y2:real) (y3:real) (y4:real) (y5:real) (y6:real) = 
+ [
+      (#2.0, y1, #2.52);
+      (#2.0, y2, #2.52);
+      (#2.0, y3, #2.52);
+      (y4min, y4, y4max);
+      (#2.52, y5, sqrt8);
+      (#2.0, y6, #2.52)]`;;
+
+let tyR = `:real->real->real->real->real->real-> (real#real#real)list`;;
+
+let mk_dart rev (x,y,z) = 
+  let x' = if (is_var x) then mk_var(fst(dest_var x),tyR) else x in
+  let plate = if (rev) then dart_template_reverse else dart_template in
+    snd(strip_forall (mk_tplate plate [x';y;z]));;
+
+let newdef rev t = define_dart (mk_dart rev t);;
+
+let apexffA = newdef false (`apexffA`,`#2.52`,`sqrt8`);;  (* NB ff comes before f on this *)
+let apexfA = newdef true (`apexfA`,`#2.52`,`sqrt8`);;
+let apexf4 = newdef false (`apexf4`,`sqrt8`,`sqrt8`);;
+let apexff4 = newdef true (`apexff4`,`sqrt8`,`sqrt8`);;
+let apexf5 = newdef false (`apexf5`,`#2.52`,`#2.52`);;
+let apexff5 = newdef true (`apexff5`,`#2.52`,`#2.52`);;
+
+let template_181212899= `\dart_class y4e y2' y3' y5' y6'. ineq (dart_class y1 y2 y3 y4 y5 y6) 
+(dih_y y1 y2 y3 y4 y5 y6 - #1.448 - 
+(#0.266 * (y1 - #2.0)) + 
+(#0.295 * (y2' - #2.0)) + 
+(#0.57 * (y3' - #2.0)) - 
+(#0.745 * (y4e - #2.52)) + 
+(#0.268 * (y5' - #2.0)) + 
+(#0.385 * (y6' - #2.52)) > #0.0)`;;
+(* coefficients corrected, April 28, 2010, June 20, 2010-thales *)
+
+let mk_iqd rev (d,dart,y4e) = 
+  let yy = if rev then [`y3:real`;`y2:real`;`y6:real`;`y5:real`] else
+    [`y2:real`;`y3:real`;`y5:real`;`y6:real`] in
+  let ineq = mk_tplate template_181212899([dart;y4e] @ yy) in 
+   {
+   idv = Printf.sprintf "181212899 %d" d;
+   doc = if (d=0) then 
+    "This original version of the inequality. There are five other derived versions." else "";
+   tags = [Cfsqp;Xconvert;Lp] @ (if (d>0) then [Derived []] else [Tex]);
+   ineq = all_forall ineq;
+   };;
+
+add (mk_iqd false (0,`apexffA`,`y4:real`));;
+add (mk_iqd true (1,`apexfA`,`y4:real`));;
+add (mk_iqd false (2,`apexf4`,`sqrt8`));;
+add (mk_iqd true (3,`apexff4`,`sqrt8`));;
+add (mk_iqd false (4,`apexf5`,`#2.52`));;
+add (mk_iqd true (5,`apexff5`,`#2.52`));;
+
+addtex(Section,"Linear Programs"," -- apex std3 hll");;
+
+let apex_std3_hll = define_dart `apex_std3_hll y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.18,y1,#2.52);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]`;;
+
+let apex_std3_small_hll = define_dart `apex_std3_small_hll y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.18,y1,#2.52);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.25);
+  (&2,y5,#2.25);
+  (&2,y6,#2.25)
+  ]`;;
+
+let dart_mll_w = define_dart `dart_mll_w y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.18,y1,#2.36);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (#2.25,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+let dart_mll_n = define_dart `dart_mll_n y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.18,y1,#2.36);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.25);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+let dart_Hll_n = define_dart `dart_Hll_n y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.36,y1,#2.52);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.25);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+let dart_Hll_w = define_dart `dart_Hll_w y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.36,y1,#2.52);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (#2.25,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+let dart_mll_w = define_dart `dart_mll_w y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.18,y1,#2.36);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (#2.25,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+(* repeated *)
+let dart_mll_n = define_dart `dart_mll_n y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.18,y1,#2.36);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.25);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+let dart_Hll_n = define_dart `dart_Hll_n y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.36,y1,#2.52);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.25);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+let dart_Hll_w = define_dart `dart_Hll_w y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.36,y1,#2.52);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (#2.25,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+let templateC = `\ dart_class 
+   f fc f0 c1 c2 c3 c4 c5 c6 y1min y2min y3min y4min y5min y6min .
+   ineq (dart_class y1 y2 y3 y4 y5 y6) 
+     ( fc * f y1 y2 y3 y4 y5 y6 > f0
+      + c1 * (y1 - y1min) + c2 *(y2- y2min) + c3 * (y3 - y3min) +
+          c4 * (y4 - y4min) + c5 *(y5- y5min) + c6 * (y6 - y6min))`;;
+
+let yymin = dest_list `[#2.18;&2;&2;&2;&2;&2]`;;
+
+let iqd s dart sym t = 
+  let c = mk_mconst (dart,tyR) in {
+  idv = s;
+  doc = "";
+  tags = [Cfsqp;Xconvert;Lp;] @ (if sym then [Lpsymmetry] else []);
+  ineq = mk_tplate templateC (c:: t);
+};;
+
+add(iqd "2151506422" "apex_std3_hll" false 
+ ([`dih_y`;`&1`;`#1.2777`] @ dest_list
+  `[#0.281; -- #0.278364; -- #0.278364; #0.7117; -- #0.34336; -- #0.34336]` @
+  yymin));;
+
+add(iqd "6836427086" "apex_std3_hll" false 
+ ([`dih_y`;`-- &1`;`-- #1.27799`] @ dest_list
+  `[-- #0.356217; #0.229466; #0.229466; -- #0.949067; #0.172726; #0.172726]` @
+  yymin));;
+
+add(iqd "3636849632" "apex_std3_hll" false 
+ ([`taum`;`&1`;`#0.0345`] @ dest_list
+  `[#0.185545; #0.193139; #0.193139; #0.170148; #0.13195; #0.13195]` @
+  yymin));;
+
+add(iqd "5298513205" "apex_std3_hll" true 
+ ([`dih2_y`;`&1`;`#1.185`] @ dest_list
+  `[-- #0.302913; #0.214849; -- #0.163775; -- #0.443449; #0.67364; -- #0.314532]` @
+  yymin));;
+
+add(iqd "7743522046" "apex_std3_hll" true
+ ([`dih2_y`;`-- &1`;`-- #1.1865`] @ dest_list
+  `[#0.20758; -- #0.236153; #0.14172; #0.263834; -- #0.771203; #0.0457292]` @
+  yymin));;
+
+let yymin_plus = dest_list `[#2.36;&2;&2;#2.25;&2;&2]`;;
+
+add(iqd "8657368829" "apex_std3_small_hll" false 
+ ([`dih_y`;`&1`;`#1.277`] @ dest_list
+  `[#0.273298; -- #0.273853; -- #0.273853; #0.708818; -- #0.313988; -- #0.313988]` @
+  yymin));;
+
+add(iqd "6619134733" "apex_std3_small_hll" false 
+ ([`dih_y`;`-- &1`;`-- #1.27799`] @ dest_list
+  `[-- #0.439002; #0.229466; #0.229466; -- #0.771733; #0.208429; #0.208429]` @
+  yymin));;
+
+add(iqd "1284543870" "apex_std3_small_hll" true
+ ([`dih2_y`;`&1`;`#1.185`] @ dest_list
+  `[-- #0.372262; #0.214849; -- #0.163775; -- #0.293508; #0.656172; -- #0.267157]` @
+  yymin));;
+
+add(iqd "4041673283" "apex_std3_small_hll" true
+ ([`dih2_y`;`-- &1`;`-- #1.1864`] @ dest_list
+  `[#0.20758; -- #0.236153; #0.14172; #0.263109; -- #0.737003; #0.12047]` @
+  yymin));;
+
+add(iqd "3872614111" "dart_mll_w" false
+ ([`dih_y`;`-- &1`;`-- #1.542`] @ dest_list
+  `[-- #0.362519; #0.298691; #0.287065; -- #0.920785; #0.190917; #0.219132]` @
+  yymin_plus));;
+
+add(iqd "3139693500" "dart_mll_n" false
+ ([`dih_y`;`-- &1`;`-- #1.542`] @ dest_list
+  `[-- #0.346773; #0.300751; #0.300751; -- #0.702567; #0.172726; #0.172727]` @
+  yymin_plus));;
+
+add(iqd "4841020453" "dart_Hll_n" false
+ ([`dih_y`;`-- &1`;`-- #1.542`] @ dest_list
+  `[-- #0.490439; #0.318125; #0.32468; -- #0.740079; #0.178868; #0.205819]` @
+  yymin_plus));;
+
+add(iqd "9925287433" "dart_Hll_w" false
+ ([`dih_y`;`-- &1`;`-- #1.542`] @ dest_list
+  `[-- #0.490439; #0.321849; #0.320956; -- #1.00902; #0.240709; #0.218081]` @
+  yymin_plus));;
+
+add(iqd "7409690040" "dart_mll_w" true
+ ([`dih2_y`;`&1`;`#1.0494`] @ dest_list
+  `[-- #0.297823; #0.215328; -- #0.0792439; -- #0.422674; #0.647416; -- #0.207561]` @
+  yymin_plus));;
+
+add(iqd "4002562507" "dart_mll_n" true
+ ([`dih2_y`;`&1`;`#1.0494`] @ dest_list
+  `[-- #0.29013; #0.215328; -- #0.0715511; -- #0.267157; #0.650269; -- #0.295198]` @
+  yymin_plus));;
+
+add(iqd "5835568093" "dart_Hll_n" true
+ ([`dih2_y`;`&1`;`#1.0494`] @ dest_list
+  `[-- #0.404131; #0.212119; -- #0.0402827; -- #0.299046; #0.643273; -- #0.266118]` @
+  yymin_plus));;
+
+ add(iqd "1894886027" "dart_Hll_w" true
+ ([`dih2_y`;`&1`;`#1.0494`] @ dest_list
+  `[-- #0.401543; #0.207551; -- #0.0294227; -- #0.494954; #0.605453; -- #0.156385]` @
+  yymin_plus));;
+
+
+(* NOW DATA SECTION OF NEW DART CLASSES THAT HAVE BEEN FOUND *)
+
+
+let dart_std3_lw = define_dart `dart_std3_lw y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.00,y1,#2.18);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (#2.25,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;
+
+(* NOW DATA SECTION OF NEW INEQUALITIES THAT HAVE BEEN FOUND *)
+
+(*
+generate_ineq_datum "mDihedral2" 
+ "{2,2,2,2.52,2,2}" "{2.52,2.52,2.52,sqrt8,2.52,2.52}";;
+
+Annoyance: have to manually edit `--#X.XX` -> `-- #X.XX`
+*)
+
+let i4750199435 = 
+  {ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_flat y1 y2 y3 y4 y5 y6)
+         (--dih2_y y1 y2 y3 y4 y5 y6 + #0.0031 >
+          --  #1.08346 +
+          #0.288794 * (-- &2 + y1) +
+          -- #0.292829 * (-- &2 + y2) +
+          #0.036457 * (-- &2 + y3) +
+          #0.348796 * (-- #2.52 + y4) +
+          -- #0.762602 * (-- &2 + y5) +
+          -- #0.112679 * (-- &2 + y6))`;
+   idv = "4750199435";
+   doc =
+    "date{2010, 8, 1, 7, 59, 42.645902}           
+     ineq generated by Mathematica holineq 
+     The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add  i4750199435;;
+
+(* 8384511215;;
+generate_ineq_datum_p "Dihedral2" "{2,2,2.52,sqrt8,2,2}"
+ "{2,2,2,2.52,2,2}" "{2.52,2.52,2.52,sqrt8,2.52,2.52}";;
+*)
+
+let i8384511215 =  {ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_flat y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0015 >
+          #0.913186 +
+          -- #0.390288 * (-- &2 + y1) +
+          #0.115895 * (-- &2 + y2) +
+          #0.164805 * (-- #2.52 + y3) +
+          -- #0.271329 * (-- #2.82843 + y4) +
+          #0.584817 * (-- &2 + y5) +
+          -- #0.170218 * (-- &2 + y6))`;
+   idv = "8384511215";
+   doc =
+    "date{2010, 8, 1, 12, 24, 31.880776}\n              ineq generated by Mathematica holineq\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add i8384511215;;
+
+(*
+7819193535;
+generate_ineq_datum "Dihedral2" 
+ "{2,2,2,2.25,2,2}" "{2.18,2.52,2.52,2.52,2.52,2.52}";;
+*)
+
+let i7819193535 =  {ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (dart_std3_lw y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0011 >
+          #1.16613 +
+          -- #0.296776 * (-- &2 + y1) +
+          #0.208935 * (-- &2 + y2) +
+          -- #0.243302 * (-- &2 + y3) +
+          -- #0.360575 * (-- #2.25 + y4) +
+          #0.636205 * (-- &2 + y5) +
+          -- #0.295156 * (-- &2 + y6))`;
+   idv = "7819193535";
+   doc =
+    "date{2010, 8, 1, 14, 6, 32.558867}\n              ineq generated by Mathematica holineq\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add  i7819193535;;
+
+(* remove "2621779878";; *)
+
+(*
+let ii = generate_ineq_datum_p "Dihedral2" "{2.36,2,2,2.52,2,2.25}"
+ "{2.18,2,2,2.25,2,2}" "{2.36,2.18,2.18,2.52,2.52,2.52}";;
+*)
+
+let i6987934000 =  {ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (dart_mll_w y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0042 >
+          #0.952682 +
+          -- #0.268837 * (-- #2.36 + y1) +
+          #0.130607 * (-- &2 + y2) +
+          -- #0.168729 * (-- &2 + y3) +
+          -- #0.0831764 * (-- #2.52 + y4) +
+          #0.580152 * (-- &2 + y5) +
+          #0.0656612 * (-- #2.25 + y6))`;
+   idv = "6987934000";
+   doc =
+    "date{2010, 8, 1, 17, 50, 0.245131}\n              ineq generated by Mathematica holineq\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add  i6987934000;;
+
+let i7291663656 =   {ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_flat y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0009 >
+          #0.947391 +
+          -- #0.637397 * (-- &2 + y1) +
+          #0.120003 * (-- &2 + y2) +
+          -- #0.100814 * (-- #2.3 + y3) +
+          -- #0.302956 * (-- #2.65 + y4) +
+          #0.547359 * (-- &2 + y5) +
+          -- #0.157745 * (-- #2.2 + y6))`;
+   idv = "7291663656";
+   doc =
+    "date{2010, 8, 2, 15, 44, 43.580639}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral2 {2,2,2.3,2.65,2,2.2} {2,2,2,2.52,2,2} {2.52,2.52,2.52,sqrt8,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add i7291663656;;
+
+let i2390583444=  {ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (dart_std3_mini y1 y2 y3 y4 y5 y6)
+         (dih_y y1 y2 y3 y4 y5 y6 + #0.0012 >
+          #1.08627 +
+          #0.159149 * (-- &2 + y1) +
+          -- #0.198496 * (-- #2.1 + y2) +
+          -- #0.199306 * (-- #2.1 + y3) +
+          #0.590083 * (-- &2 + y4) +
+          -- #0.0888111 * (-- #2.25 + y5) +
+          -- #0.0881846 * (-- #2.25 + y6))`;
+   idv = "2390583444";
+   doc =
+    "date{2010, 8, 2, 17, 51, 29.665035}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral {2,2.1,2.1,2,2.25,2.25} {2,2,2,2,2,2} {2.18,2.18,2.18,2.25,2.25,2.25}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add i2390583444;;
+
+
+let apex_flat_l = define_dart `apex_flat_l y1 y2 y3 y4 y5 y6 =
+  [
+  (#2,y1,#2.18);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (#2.52,y4,sqrt8);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;  
+
+let apex_flat_h = define_dart `apex_flat_h y1 y2 y3 y4 y5 y6 =
+  [
+  (#2.18,y1,#2.52);
+  (&2,y2,#2.52);
+  (&2,y3,#2.52);
+  (#2.52,y4,sqrt8);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;  
+
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_flat_l y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0071 >
+          #0.98362 +
+          -- #0.264094 * (-- #2.18 + y1) +
+          #0.149308 * (-- #2.18 + y2) +
+          -- #0.312683 * (-- &2 + y3) +
+          -- #0.282792 * (-- #2.65 + y4) +
+          #0.581552 * (-- &2 + y5) +
+          #0.143669 * (-- #2.3 + y6))`;
+   idv = "9641946727";
+   doc =
+    "date{2010, 8, 2, 20, 0, 47.561405}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral2 {2.18,2.18,2,2.65,2,2.3} {2,2,2,2.52,2,2} {2.18,2.52,2.52,sqrt8,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+let apex_std3_lll_xww = define_dart `apex_std3_lll_xww y1 y2 y3 y4 y5 y6 =
+  [
+  (&2,y1,#2.18);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (&2,y4,#2.52);
+  (#2.25,y5,#2.52);
+  (#2.25,y6,#2.52)
+  ]` ;;  
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_lll_xww y1 y2 y3 y4 y5 y6)
+         (dih_y y1 y2 y3 y4 y5 y6 + #0.0071 >
+          #1.09969 +
+          #0.146345 * (-- &2 + y1) +
+          -- #0.160538 * (-- &2 + y2) +
+          -- #0.151698 * (-- #2.14 + y3) +
+          #0.61314 * (-- &2 + y4) +
+          -- #0.236149 * (-- #2.25 + y5) +
+          -- #0.242043 * (-- #2.25 + y6))`;
+   idv = "4222324842";
+   doc =
+    "date{2010, 8, 3, 7, 9, 1.995901}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral {2,2,2.14,2,2.25,2.25} {2,2,2,2,2.25,2.25} {2.18,2.18,2.18,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+let apex_std3_lll_wxx = define_dart `apex_std3_lll_wxx y1 y2 y3 y4 y5 y6 =
+  [
+  (&2,y1,#2.18);
+  (&2,y2,#2.18);
+  (&2,y3,#2.18);
+  (#2.25,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;  
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_lll_wxx y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0025 >
+          #1.16613 +
+          -- #0.296776 * (-- &2 + y1) +
+          #0.208935 * (-- &2 + y2) +
+          -- #0.196313 * (-- &2 + y3) +
+          -- #0.360575 * (-- #2.25 + y4) +
+          #0.652861 * (-- &2 + y5) +
+          -- #0.218063 * (-- &2 + y6))`;
+   idv = "5756588587";
+   doc =
+    "date{2010, 8, 3, 19, 47, 22.770311}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum with input Dihedral2 {2,2,2,2.25,2,2} {2.18,2.18,2.18,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_flat y1 y2 y3 y4 y5 y6)
+         (--dih_y y1 y2 y3 y4 y5 y6 + #0.0011 >
+          -- #1.67609 +
+          -- #0.506322 * (-- #2.18 + y1) +
+          #0.212075 * (-- #2.1 + y2) +
+          #0.230669 * (-- #2.1 + y3) +
+          -- #1.28579 * (-- #2.52 + y4) +
+          #0.249199 * (-- &2 + y5) +
+          #0.193545 * (-- &2 + y6))`;
+   idv = "3425739813";
+   doc =
+    "date{2010, 8, 3, 20, 2, 51.133190}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input mDihedral {2.18,2.1,2.1,2.52,2,2} {2,2,2,2.52,2,2} {2.52,2.52,2.52,sqrt8,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_lll_wxx y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0050 >
+          #1.02005 +
+          -- #0.256494 * (-- #2.18 + y1) +
+          #0.121497 * (-- &2 + y2) +
+          -- #0.256494 * (-- &2 + y3) +
+          -- #0.0116869 * (-- #2.52 + y4) +
+          #0.598233 * (-- &2 + y5) +
+          #0.0187672 * (-- #2.25 + y6))`;
+   idv = "7316455966";
+   doc =
+    "date{2010, 8, 4, 6, 2, 11.667622}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral2 {2.18,2,2,2.52,2,2.25} {2,2,2,2.25,2,2} {2.18,2.18,2.18,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_lll_wxx y1 y2 y3 y4 y5 y6)
+         (--dih3_y y1 y2 y3 y4 y5 y6 + #0.0087 >
+          -- #1.18616 +
+          #0.436647 * (-- #2.18 + y1) +
+          #0.032258 * (-- &2 + y2) +
+          -- #0.289629 * (-- &2 + y3) +
+          #0.397053 * (-- #2.52 + y4) +
+          -- #0.0210289 * (-- &2 + y5) +
+          -- #0.683341 * (-- #2.25 + y6))`;
+   idv = "6410081357";
+   doc =
+    "date{2010, 8, 4, 6, 2, 43.302104}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input mDihedral3 {2.18,2,2,2.52,2,2.25} {2,2,2,2.25,2,2} {2.18,2.18,2.18,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (dart_mll_n y1 y2 y3 y4 y5 y6)
+         (--dih_y y1 y2 y3 y4 y5 y6 + #0.0083 >
+          -- #1.29912 +
+          -- #0.284457 * (-- #2.18 + y1) +
+          #0.337354 * (-- &2 + y2) +
+          #0.186287 * (-- &2 + y3) +
+          -- #0.645382 * (-- #2.25 + y4) +
+          #0.367671 * (-- #2.52 + y5) +
+          #0.0536051 * (-- &2 + y6))`;
+   idv = "2923748598";
+   doc =
+    "date{2010, 8, 4, 8, 57, 40.892442}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input mDihedral {2.18,2,2,2.25,2.52,2} {2.18,2,2,2,2,2} {2.36,2.18,2.18,2.25,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (dart_mll_n y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0035 >
+          #1.05036 +
+          -- #0.222178 * (-- #2.18 + y1) +
+          #0.132628 * (-- &2 + y2) +
+          -- #0.219284 * (-- &2 + y3) +
+          #0.00563427 * (-- #2.25 + y4) +
+          #0.59096 * (-- &2 + y5) +
+          -- #0.0771574 * (-- #2.52 + y6))`;
+   idv = "4306175952";
+   doc =
+    "date{2010, 8, 4, 9, 3, 43.896393}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral2 {2.18,2,2,2.25,2,2.52} {2.18,2,2,2,2,2} {2.36,2.18,2.18,2.25,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+         (--dih3_y y1 y2 y3 y4 y5 y6 + #0.0076 >
+          -- #0.956317 +
+          #0.419124 * (-- &2 + y1) +
+          -- #0.0753922 * (-- &2 + y2) +
+          -- #0.252307 * (-- &2 + y3) +
+          #0.5 * (-- #2.82843 + y4) +
+          -- #0.246082 * (-- &2 + y5) +
+          -- #0.788717 * (-- &2 + y6))`;
+   idv = "2763799127";
+   doc =
+    "date{2010, 8, 4, 13, 47, 22.850389}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum with input mDihedral3 {2,2,2,sqrt8,2,2} {2.52,2.52,2.52,3.0,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_sup_flat y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0047 >
+          #0.936544 +
+          -- #0.636113 * (-- #2.1 + y1) +
+          #0.140759 * (-- #2.1 + y2) +
+          -- #0.0771734 * (-- #2.3 + y3) +
+          -- #1.29068 * (-- #2.82843 + y4) +
+          #0.591328 * (-- #2.1 + y5) +
+          -- #0.0521775 * (-- #2.1 + y6))`;
+   idv = "5943578801";
+   doc =
+    "date{2010, 8, 4, 13, 50, 57.176690}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral2 {2.1,2.1,2.3,sqrt8,2.1,2.1} {2,2,2,sqrt8,2,2} {2.52,2.52,2.52,3.0,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+let apex_std3_lhh  = define_dart `apex_std3_lhh y1 y2 y3 y4 y5 y6 =
+  [
+  (&2,y1,#2.18);
+  (#2.18,y2,#2.52);
+  (#2.18,y3,#2.52);
+  (&2,y4,#2.52);
+  (&2,y5,#2.52);
+  (&2,y6,#2.52)
+  ]` ;;  
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_lhh y1 y2 y3 y4 y5 y6)
+         (dih_y y1 y2 y3 y4 y5 y6 + #0.0012 >
+          #1.01332 +
+          #0.148615 * (-- &2 + y1) +
+          -- #0.379006 * (-- #2.18 + y2) +
+          -- #0.379441 * (-- #2.18 + y3) +
+          #0.583676 * (-- &2 + y4) +
+          -- #0.184708 * (-- #2.25 + y5) +
+          -- #0.18471 * (-- #2.25 + y6))`;
+   idv = "1836408787";
+   doc =
+    "date{2010, 8, 4, 18, 41, 52.689213}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral {2,2.18,2.18,2,2.25,2.25} {2,2.18,2.18,2,2,2} {2.18,2.52,2.52,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_lhh y1 y2 y3 y4 y5 y6)
+         (--dih2_y y1 y2 y3 y4 y5 y6 + #0.0059 >
+          -- #1.33909 +
+          #0.0724529 * (-- &2 + y1) +
+          -- #0.486824 * (-- #2.18 + y2) +
+          #0.317329 * (-- #2.18 + y3) +
+          -- #0.00479451 * (-- &2 + y4) +
+          -- #0.751179 * (-- #2.25 + y5) +
+          #0.350857 * (-- #2.25 + y6))`;
+   idv = "1248932983";
+   doc =
+    "date{2010, 8, 4, 18, 42, 54.778495}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input mDihedral2 {2,2.18,2.18,2,2.25,2.25} {2,2.18,2.18,2,2,2} {2.18,2.52,2.52,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+(* Aug 5, 2010 *)
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_flat y1 y2 y3 y4 y5 y6)
+         (dih3_y y1 y2 y3 y4 y5 y6 + #0.0046 >
+          #0.88473 +
+          -- #0.443946 * (-- #2.36 + y1) +
+          -- #0.244711 * (-- #2.1 + y2) +
+          #0.205592 * (-- #2.1 + y3) +
+          -- #0.739126 * (-- #2.55 + y4) +
+          -- #0.127198 * (-- #2.1 + y5) +
+          #0.61582 * (-- &2 + y6))`;
+   idv = "6725783616";
+   doc =
+    "date{2010, 8, 5, 6, 6, 10.752609}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral3 {2.36,2.1,2.1,2.55,2.1,2.0} {2,2,2,2.52,2,2} {2.52,2.52,2.52,sqrt8,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_hll y1 y2 y3 y4 y5 y6)
+         (--dih3_y y1 y2 y3 y4 y5 y6 + #0.0116 >
+          -- #1.30119 +
+          #0.392915 * (-- #2.36 + y1) +
+          #0.142563 * (-- #2.1 + y2) +
+          -- #0.258747 * (-- #2.1 + y3) +
+          #0.417088 * (-- #2.45 + y4) +
+          -- #0.0606764 * (-- &2 + y5) +
+          -- #0.637966 * (-- #2.45 + y6))`;
+   idv = "9185711902";
+   doc =
+    "date{2010, 8, 5, 6, 25, 0.685185}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input mDihedral3 {2.36,2.1,2.1,2.45,2.,2.45} {2.18,2,2,2,2,2} {2.52,2.18,2.18,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_std3_hll y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0011 >
+          #0.957661 +
+          -- #0.250506 * (-- #2.36 + y1) +
+          #0.145114 * (-- #2.1 + y2) +
+          -- #0.0549376 * (-- #2.1 + y3) +
+          -- #0.0384445 * (-- #2.45 + y4) +
+          #0.5275 * (-- &2 + y5) +
+          #0.118819 * (-- #2.45 + y6))`;
+   idv = "6284721194";
+   doc =
+    "date{2010, 8, 5, 6, 29, 20.593944}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral2 {2.36,2.1,2.1,2.45,2.,2.45} {2.18,2,2,2,2,2} {2.52,2.18,2.18,2.52,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+add{ineq =
+    `!y1 y2 y3 y4 y5 y6.
+         ineq (apex_flat_h y1 y2 y3 y4 y5 y6)
+         (dih2_y y1 y2 y3 y4 y5 y6 + #0.0042 >
+          #0.868174 +
+          -- #0.701906 * (-- #2.25 + y1) +
+          #0.136514 * (-- &2 + y2) +
+          -- #0.209239 * (-- #2.18 + y3) +
+          -- #0.493373 * (-- #2.65 + y4) +
+          #0.537385 * (-- &2 + y5) +
+          #0.0187672 * (-- #2.2 + y6))`;
+   idv = "3137600529";
+   doc =
+    "date{2010, 8, 5, 10, 13, 11.823742}\n              ineq generated by Mathematica holineq\n Generated by generate_ineq_datum_p with input Dihedral2 {2.25,2,2.18,2.65,2.,2.2} {2.18,2,2,2.52,2,2} {2.52,2.52,2.52,sqrt8,2.52,2.52}.\n  The inequality has been fitted to cfsqp margins.";
+   tags = [Cfsqp; Xconvert;Lp; Lpsymmetry]};;
+
+end;;

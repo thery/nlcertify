@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# This scripts installs the full Coq/OCaml dependencies of NLCertify. Here, we assume that opam is installed. (To install opam, visit http://opam.ocaml.org/doc/Quick_Install.html)
+# run these commands from the root of nlcertify directory
+
+git clone git@github.com:braibant/opam-coq-repo.git
+opam remote add coq opam-coq-repo # opam repository for coq dependencies
+opam update coq                   # update the opam system
+opam install ocamlfind ocamlgraph zarith lacaml coq.8.4.2 flocq ssreflect mathcomp # Coq/OCaml depencies
+
+# compilation of NLCertify libraries
+make 
+
+# git master version of coq-interval
+git clone git://scm.gforge.inria.fr/gappa/interval.git
+cd interval && ./autogen.sh && ./configure && ./remake && ./remake install && cd .. # install git version of coq-interval
