@@ -92,9 +92,9 @@ module Make
   type ineqs_hash_tree = (string,(string list*flyspeck_tree)) Hashtbl.t                          
 
 
-  let sphere_table = Hashtbl.create 200
-  let bounds_table = Hashtbl.create 500
-  let ineq_table = Hashtbl.create 500
+  let sphere_table : sphere_hash_tree  = Hashtbl.create 200
+  let bounds_table : bounds_hash_tree = Hashtbl.create 500
+  let ineq_table : ineqs_hash_tree = Hashtbl.create 500
 
   let string_func_tree t = 
     let rec print_aux = function

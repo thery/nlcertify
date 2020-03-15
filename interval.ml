@@ -217,7 +217,7 @@ module Make(N: Numeric.T)(F: Functions.T with type num_i = N.t) (U: Tutils.T wit
   type inter_mut = {mutable i:interval}
 
   let tuple_of_num i = (i, i) 
-  let tuple_of_num_list = List.map tuple_of_num
+  let tuple_of_num_list : num_i list -> (num_i * num_i) list = List.map tuple_of_num
   let zero_tuple = tuple_of_num zero_i
   let ten_tuple = tuple_of_num ten_i
   exception Refine

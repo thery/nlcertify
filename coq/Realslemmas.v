@@ -1,6 +1,6 @@
 Require Import Raxioms RIneq Rpow_def DiscrR.
 Require Import Reals.
-Open Local Scope R_scope.
+Local Open Scope R_scope.
 Require Import ssreflect.
 
 Lemma Rmult_neutral : forall x:R , 0 * x = 0.
@@ -19,18 +19,16 @@ Qed.
 
 Lemma raux6impl (a b c d : R) : b <> 0 -> d <> 0 -> a * d = c * b -> a * /  b = c */ d.
 Proof. 
-move => bneq0 dneq0. 
-- move => prod.  
- + have div : a * d */ b = c. rewrite prod. by field.
- + rewrite -div. by field.
+  move => bneq0 dneq0 prod.  
+  have div : a * d */ b = c by rewrite prod; field.
+  by rewrite -div; field.
 Qed.
 
 Lemma raux6 (a b c d : R) : b <> 0 -> d <> 0 -> a * /  b = c */ d ->  a * d = c * b.
 Proof.
-move => bneq0 dneq0. 
-- move => div.
- + have div2 : (a */ b) * d = c. rewrite div. by field.
- + rewrite -div2. by field.
+  move => bneq0 dneq0 div.
+  have div2 : (a */ b) * d = c by rewrite div; field.
+  by rewrite -div2; field.
 Qed.
 
 Lemma Rlt_neq : forall r , 0 < r -> r <> 0.

@@ -73,7 +73,7 @@ module Make
     let prec = Config.Config.print_precision 
     let cert0 = P.cert_null
     let br_count = ref 0 
-    let br_tbl = Hashtbl.create 2
+    let br_tbl : (fold_poly_tree, int ref) Hashtbl.t = Hashtbl.create 2
     let eval_ref = ref (I.mk_i_I N.ten_i)
     let xopt_is_min = ref true
     let verb = Config.Config.semialg_verb

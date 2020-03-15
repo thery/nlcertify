@@ -1,4 +1,5 @@
-Require Import ssreflect ssrbool eqtype ssrfun.
+Require Import ssreflect ssrbool ssrfun.
+From mathcomp Require Import eqtype.
 Require Import NArith.
 Require Import Relation_Definitions.
 Require Import Setoid.
@@ -51,14 +52,11 @@ Definition cltb (x y : C) := (cleb x y) && (cneqb x y).
 Notation "x [~=] y" := (cneqb x y).
 Notation "x [<] y" := (cltb x y).
 *)
-Require Import seq.
+From mathcomp Require Import seq.
 Definition seqpos := seq positive.
 
 Lemma eqpositiveP : Equality.axiom Pos.eqb.
-Proof.
-move=> p1 p2.
-apply: (equivP idP). by apply Pos.eqb_eq.
-Qed.
+Proof. by move=> p1 p2; apply/(equivP idP)/Pos.eqb_eq. Qed.
 
 Canonical positive_eqMixin := EqMixin eqpositiveP.
 Canonical positive_eqType := Eval hnf in EqType positive positive_eqMixin.
@@ -150,26 +148,28 @@ Qed.
 
 Add Morphism rminus with signature req ==> req ==> req as rminus_morph.
 Proof.
-  exact (rminus_morph sor). (* We already proved that minus is a morphism in OrderedRing.v *)
+  exact (rminus_morph sor). 
+  (* We already proved that minus is a morphism in OrderedRing.v *)
 Qed.
 
 Add Ring SOR : sor.(SORrt).
 
 
-Ltac le_less := rewrite (Rle_lt_eq sor); left; try assumption.
-Ltac le_equal := rewrite (Rle_lt_eq sor); right; try reflexivity; try assumption.
-Ltac le_elim H := rewrite (Rle_lt_eq sor) in H; destruct H as [H | H].
+Ltac le_less := 
+  rewrite (Rle_lt_eq sor); left; try assumption.
+Ltac le_equal := 
+  rewrite (Rle_lt_eq sor); right; try reflexivity; try assumption.
+Ltac le_elim H := 
+  rewrite (Rle_lt_eq sor) in H; destruct H as [H | H].
 
 Lemma cleb_sound : forall x y : C, x [<=] y = true -> [x] <= [y].
-Proof.
-  exact addon.(SORcleb_morph).
-Qed.
+Proof. exact addon.(SORcleb_morph). Qed.
 
 Lemma cleqb_sound x y : x [=] y = true -> [x] == [y].
 Proof. apply (morph_eq (SORrm addon)). Qed.
 
-
-Definition PolC := Pol C. (* polynomials in generalized Horner form, defined in sos_horner *)
+Definition PolC := Pol C.
+(* polynomials in generalized Horner form, defined in sos_horner *)
 Definition P0 := Pc cO.
 Definition P1 := Pc cI.
 Definition PolEnv := Env R. (* For interpreting PolC *)
@@ -190,9 +190,8 @@ Fixpoint lower_bound_0_1 p := match p with
   | PX p _ q => lower_bound_0_1 p +! lower_bound_0_1 q
 end.
 
-Require Import ssrnat.
+From mathcomp Require Import ssrnat.
 Local Open Scope nat.
-
 
 Fixpoint varmax_aux (p : PolC) idx := match p with
   | Pc c => idx
@@ -243,56 +242,57 @@ Definition Rops_wd := mk_reqe (*rplus rtimes ropp req*)
 
 Close Scope nat_scope.
 
-Lemma eval_pol_add : forall env lhs rhs, eval_pol env (padd lhs rhs) == eval_pol env lhs + eval_pol env rhs.
+Lemma eval_pol_add  env lhs rhs :
+  eval_pol env (padd lhs rhs) == eval_pol env lhs + eval_pol env rhs.
 Proof.
-  intros.
   apply (Padd_ok  sor.(SORsetoid) Rops_wd
     (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) addon.(SORrm)  ).
 Qed.
 
-Lemma eval_pol_sub : forall env lhs rhs, eval_pol env (psub  lhs rhs) == eval_pol env lhs - eval_pol env rhs.
+Lemma eval_pol_sub env lhs rhs :
+  eval_pol env (psub  lhs rhs) == eval_pol env lhs - eval_pol env rhs.
 Proof.
-  intros.
   apply (Psub_ok  sor.(SORsetoid) Rops_wd
     (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) addon.(SORrm)).
 Qed.
 
-
-Lemma eval_pol_mul : forall env lhs rhs, eval_pol env (pmul lhs rhs) == eval_pol env lhs * eval_pol env rhs.
+Lemma eval_pol_mul env lhs rhs :
+  eval_pol env (pmul lhs rhs) == eval_pol env lhs * eval_pol env rhs.
 Proof.
-  intros.
   apply (Pmul_ok  sor.(SORsetoid) Rops_wd
     (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) addon.(SORrm) lhs rhs env).
 Qed.
 
-Lemma eval_pol_square : forall env lhs, eval_pol env (psquare lhs) == (eval_pol env lhs) * (eval_pol env lhs).
+Lemma eval_pol_square env lhs :
+  eval_pol env (psquare lhs) == (eval_pol env lhs) * (eval_pol env lhs).
 Proof.
-  intros.
   apply (Psquare_ok  sor.(SORsetoid) Rops_wd
     (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) addon.(SORrm) lhs env).
 Qed.
 
-
 Definition  eval_pexpr :=  PEeval rplus rtimes rminus ropp phi pow_phi rpow .
 
 Definition norm := norm_aux cO cI cplus ctimes cminus copp ceqb.
-Lemma norm_eval_pexpr_correct env p1 p2 : norm p1 ?== norm p2 -> eval_pexpr env p1 == eval_pexpr env p2.
+Lemma norm_eval_pexpr_correct env p1 p2 :
+  norm p1 ?== norm p2 -> eval_pexpr env p1 == eval_pexpr env p2.
 Proof.
   intros.
   by apply (norm_eval_spec sor.(SORsetoid) Rops_wd
-    (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) addon.(SORrm)  addon.(SORpower)  ).
+    (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) addon.(SORrm) 
+                              addon.(SORpower)  ).
 Qed.
 
-Lemma eval_pol_norm : forall env lhs, eval_pexpr env lhs == eval_pol env  (norm lhs).
+Lemma eval_pol_norm env lhs : eval_pexpr env lhs == eval_pol env  (norm lhs).
 Proof.
-  intros.
-  apply  (norm_aux_spec sor.(SORsetoid) Rops_wd   (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) addon.(SORrm) addon.(SORpower) ).
+  apply  (norm_aux_spec sor.(SORsetoid) Rops_wd
+          (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt)) 
+          addon.(SORrm) addon.(SORpower) ).
 Qed.
 
-Lemma eval_pol_norm_aux env lhs rhs : norm lhs ?== rhs -> eval_pexpr env lhs ==  eval_pol env rhs.
+Lemma eval_pol_norm_aux env lhs rhs : 
+  norm lhs ?== rhs -> eval_pexpr env lhs ==  eval_pol env rhs.
 Proof.
-rewrite eval_pol_norm.
-move => h.
+rewrite eval_pol_norm => h.
 move : (Peq_ok micromega_sor_setoid Rops_wd (SORrm addon) (norm lhs) rhs h).
 by [].
 Qed.
@@ -305,32 +305,22 @@ Qed.
 
 Lemma c_aux c : [cO] <= [cminus c (cmin c cO)].
 Proof.
-apply cleb_sound. 
-apply cleq_aux2.
-move : lt_total => T.
-move : (T c cO).
-apply prop_aux.
-- split.
-  move => Hlt.
-  have : (ceq (cmin c cO) c). apply cmin_l. 
-  corder.
-  move => Hmin. rewrite Hmin  cminus0_aux. apply cleq_aux.
-apply prop_aux.
-- split.
-  move => Heq. rewrite Heq //=.
-- 
-  move => Hgt. 
-  have : (ceq (cmin c cO) cO). apply cmin_r.
-  corder.
-  move => Hmin. rewrite Hmin cminus0_aux2. corder.
+apply/cleb_sound/cleq_aux2.
+case: (lt_total c cO) => [Hlt|[->//|Hgt]].
+  have -> : (ceq (cmin c cO) c) by apply cmin_l; corder.
+  by rewrite cminus0_aux; apply cleq_aux.
+have -> : (ceq (cmin c cO) cO) by apply cmin_r; corder.
+by rewrite cminus0_aux2; corder.
 Qed.
 
-Definition PsubC_ok : forall c P env, eval_pol env (psubC  P c) == eval_pol env P - [c] :=
+Definition PsubC_ok : 
+  forall c P env, eval_pol env (psubC  P c) == eval_pol env P - [c] :=
   let Rops_wd := mk_reqe (*rplus rtimes ropp req*)
                        sor.(SORplus_wd)
                        sor.(SORtimes_wd)
                        sor.(SORopp_wd) in
-                       PsubC_ok sor.(SORsetoid) Rops_wd (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt))
+                       PsubC_ok sor.(SORsetoid) Rops_wd 
+                         (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt))
                 addon.(SORrm).
 
 
@@ -339,18 +329,15 @@ Definition PmulC_ok : forall c P env, eval_pol env (pmulC P c) == eval_pol env P
                        sor.(SORplus_wd)
                        sor.(SORtimes_wd)
                        sor.(SORopp_wd) in
-                       PmulC_ok sor.(SORsetoid) Rops_wd (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt))
+                       PmulC_ok sor.(SORsetoid) Rops_wd 
+                       (Rth_ARth (SORsetoid sor) Rops_wd sor.(SORrt))
                 addon.(SORrm).
-
-
-
 
 Lemma r_cplus x y : [cplus x y] == [x] + [y].
 Proof. apply (morph_add (SORrm addon)). Qed.
 
 Lemma r_cminus x y : [cminus x y] == [x] - [y].
 Proof. apply (morph_sub (SORrm addon)). Qed.
-
 
 Lemma cOrO : [cO] == rO.
 Proof. apply (morph0 (SORrm addon)). Qed.
@@ -360,6 +347,7 @@ Proof. apply (morph1 (SORrm addon)). Qed.
 
 Lemma rone r : 1 * r == r.
 Proof. ring. Qed.
+
 Lemma rone_r r : r * 1 == r.
 Proof. ring. Qed.
 
@@ -400,113 +388,100 @@ Proof. ring. Qed.
 Lemma c_aux2 c : [cmin c cO] <= 0.
 Proof. 
 rewrite <- cOrO.
-apply cleb_sound.
-apply cleq_aux2.
-move : lt_total => T.
-move : (T c cO).
-apply prop_aux.
-- split.
-  move => Hlt.
-  have : (ceq (cmin c cO) c). apply cmin_l. 
-  corder.
-  move => Hmin. rewrite Hmin. corder.
-apply prop_aux.
-- split.
-  move => Heq. rewrite Heq //=.
-- 
-  move => Hgt. 
-  have : (ceq (cmin c cO) cO). apply cmin_r.
-  corder.
-  move => Hmin. rewrite Hmin. by [].
+apply/cleb_sound/cleq_aux2.
+case: (lt_total c cO) => [Hlt|[->//=|Hgt]].
+  have -> : (ceq (cmin c cO) c) by apply cmin_l; corder.
+  by corder.
+suff -> : (ceq (cmin c cO) cO) by [].
+by apply cmin_r; corder.
 Qed.
-
 
 Definition ceqb_specC := (ceqb_spec (SORrm addon)).
 (*Variable Reqe : ring_eq_ext rplus rtimes ropp req.
    Peq_ok micromega_sor_setoid Reqe (SORrm addon).*)
 
-Lemma jump_aux p (l : PolEnv) : forall i, Env.nth (i + p) l = Env.nth i (jump p l).
-Proof. move => i. trivial. Qed.
+Lemma jump_aux p (l : PolEnv) i : Env.nth (i + p) l = Env.nth i (jump p l).
+Proof. by []. Qed.
 
 Lemma lower_bound_negative p : [lower_bound_0_1 p] <= 0.
 Proof.
-induction p.
-- simpl. by apply c_aux2.
-- by [].
-- simpl. rewrite r_cplus. (*Locate Rtimes_neg_neg.*) rewrite <- rO_add. by apply (Rplus_le_mono sor).
+induction p => //=; first by apply c_aux2.
+by rewrite r_cplus -rO_add; apply (Rplus_le_mono sor).
 Qed.
-
-
 
 Lemma Rtimes_aux r r1 r2 : 0 <= r -> 0 <= r1 - r2 -> r2 * r <= r1 * r.
 Proof. 
-  move => in1 in2. rewrite (Rle_le_minus sor).
-  have <- : r * (r1 - r2) == r1 * r - r2 * r by ring. by apply (Rtimes_nonneg_nonneg sor).
+  move => in1 in2. 
+  rewrite (Rle_le_minus sor).
+  have <- : r * (r1 - r2) == r1 * r - r2 * r by ring.
+  by apply (Rtimes_nonneg_nonneg sor).
 Qed.
 
 Definition Rle_trans := Rle_trans sor.
 
 Lemma r_trans r1 r2 : 0 <= r1 -> r1 <= r2 -> 0 <= r2.
-Proof.
- move => in1 in2.
- by apply (Rle_trans (m:=r1)).
- Qed.
-
+Proof. by move => in1 in2; apply: Rle_trans in2. Qed.
 
 Lemma rminus_aux2 r1 r2 : 0 <= r2 - r1 <-> r1 <= r2.
-Proof. move => *. split; by apply (Rle_le_minus sor). Qed.
-
+Proof. by split; by apply (Rle_le_minus sor). Qed.
 
 Lemma ropp_aux r1 r2 : r1 <= r2 -> -r2 <= -r1.
 Proof.
   move => ineq.
-  rewrite -rminus_aux2. have -> : - r1 - - r2 == r2 - r1 by ring. by rewrite rminus_aux2.
+  rewrite -rminus_aux2.
+  have -> : - r1 - - r2 == r2 - r1 by ring.
+  by rewrite rminus_aux2.
 Qed.
 
-Lemma Rtimes_aux2 r r1 r2 : 0 <= r -> 0 <= 1 - r -> r1 <= r2 -> r1 <= 0 -> r1 <= r2 * r.
+Lemma Rtimes_aux2 r r1 r2 :
+  0 <= r -> 0 <= 1 - r -> r1 <= r2 -> r1 <= 0 -> r1 <= r2 * r.
 Proof. 
- move => inr_0 inr_1 inr1r2 inr1.
- rewrite -rminus_aux2. have -> : r2 * r - r1 == (r2 - r1) * r + (1 - r) * (-r1) by ring.
- apply (Rplus_nonneg_nonneg sor).
- - apply (Rtimes_nonneg_nonneg sor). by rewrite rminus_aux2. by [].
- - apply (Rtimes_nonneg_nonneg sor). by []. have -> : 0 == -0 by ring. by apply ropp_aux.
+  move => inr_0 inr_1 inr1r2 inr1.
+  rewrite -rminus_aux2.
+  have -> : r2 * r - r1 == (r2 - r1) * r + (1 - r) * (-r1) by ring.
+  apply (Rplus_nonneg_nonneg sor).
+    apply (Rtimes_nonneg_nonneg sor) => //.
+    by rewrite rminus_aux2. 
+  apply (Rtimes_nonneg_nonneg sor) => //. 
+  have -> : 0 == -0 by ring.
+  by apply ropp_aux.
 Qed.
 
-
-Lemma rpow_0 r : 0 <= r -> forall i, 0 <= r^i.
+Lemma rpow_0 r : 0 <= r -> forall i, 0 <= r ^ i.
 Proof. 
- move => h.
- elim.
- move => p hp. simpl. by repeat apply (Rtimes_nonneg_nonneg sor). 
- move => p hp. simpl. by repeat apply (Rtimes_nonneg_nonneg sor).
- by [].
+  by move => h; elim=> [p hp|p hp|] //; repeat apply (Rtimes_nonneg_nonneg sor).
 Qed.
 
 Lemma rpow_1 r : 0 <= r -> 0 <= 1 - r -> forall i, 0 <= 1 - r^i.
 Proof. 
  move => hr0 hr1.
- elim.
- - move => p hp. simpl. 
-   have -> :  1 - r * (r ^ p * r ^ p) == (1 - r ^ p) * r * r^p + ((1 - r ^ p) * r + (1 - r)) by ring.
-   repeat apply (Rplus_nonneg_nonneg sor); repeat apply (Rtimes_nonneg_nonneg sor). by []. by []. by apply rpow_0. by []. by []. by [].
- - move => p hp. simpl.
-   have -> :  1 - (r ^ p * r ^ p) == (1 - r ^ p) * r^p + (1 - r^p) by ring. apply (Rplus_nonneg_nonneg sor). apply (Rtimes_nonneg_nonneg sor). by [].  by apply rpow_0. by []. 
- - by [].
+ elim => [p hp|p hp|] //=.
+   have -> :  1 - r * (r ^ p * r ^ p) == 
+               (1 - r ^ p) * r * r^p + ((1 - r ^ p) * r + (1 - r)) by ring.
+   repeat (apply (Rplus_nonneg_nonneg sor) || 
+           apply (Rtimes_nonneg_nonneg sor)) => //.
+   by apply rpow_0.
+  have -> :  1 - (r ^ p * r ^ p) == (1 - r ^ p) * r^p + (1 - r^p) by ring.
+  repeat (apply (Rplus_nonneg_nonneg sor) || 
+          apply (Rtimes_nonneg_nonneg sor)) => //.
+  by apply rpow_0.
 Qed.
 
 Lemma Rtimes_nonpos_nonpos r1 r2 : r1 <= 0 -> r2 <= 0 -> 0 <= r1 * r2.
 Proof.
- move => in1 in2.
- apply ropp_aux in in1. apply ropp_aux in in2. move : in1 in2. rewrite -rO_opp. 
- have -> : r1 * r2 == (-r1) * (-r2) by ring.
- by apply (Rtimes_nonneg_nonneg sor).
+  move => in1 in2.
+  have -> : r1 * r2 == (-r1) * (-r2) by ring.
+  by apply (Rtimes_nonneg_nonneg sor); rewrite rO_opp; apply ropp_aux.
 Qed.
 
 (*
-Lemma remainder_lemma p : forall l, ((forall i, 0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l) ->  [lower_bound_0_1 p] <= eval_pol l p).
+Lemma remainder_lemma p : 
+  forall l, ((forall i, 0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l) ->
+             [lower_bound_0_1 p] <= eval_pol l p).
 Proof.
 induction p; move => l h.
-- simpl. apply rminus_aux2. simpl. rewrite <- cOrO. rewrite <- r_cminus. by apply c_aux.
+- simpl. apply rminus_aux2. simpl. 
+  rewrite <- cOrO. rewrite <- r_cminus. by apply c_aux.
 - simpl. apply IHp. move => i; apply h.
 - simpl. rewrite r_cplus. apply (Rplus_le_mono sor).  apply (Rtimes_aux2).
   + apply rpow_0; apply h. apply rpow_1; apply h. 
@@ -519,34 +494,43 @@ Qed.
 Require Import BinNat BinNums BinPos NArith PArith Pnat.
 *)
 Lemma varmax_nonneg p : (0 <= varmax p)%N.
+Proof. by destruct (varmax p). Qed.
+
+Lemma remainder_lemma p : forall l, 
+  ((forall i, (Pos.to_nat i <= varmax p)%nat -> 
+     0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l) ->  
+      [lower_bound_0_1 p] <= eval_pol l p).
 Proof.
-by destruct (varmax p).
-(*by induction p; move => //=.*)
+elim: p => [c l IH|p p1 IH l h|p1 IHp1 p2 p3 IHp3 l h] //=.
+- by apply rminus_aux2; rewrite -cOrO -r_cminus; apply c_aux.
+- apply IH => i hp.
+  have newh : (Pos.to_nat (i + p) <= varmax p1 + Pos.to_nat p)%nat. 
+    by rewrite Pnat.Pos2Nat.inj_add leq_add2r.
+  by apply h.
+have varmax123 : (nat_of_pos 1 <= varmax (PX p1 p2 p3))%N.
+   rewrite /= leq_max; apply/orP; left.
+   by move : (varmax_nonneg p3); rewrite -ltnS addn1.
+have hd0 : 0 <= Env.hd l by apply h.
+have hd1 : 0 <= 1 - Env.hd l by apply h.
+rewrite r_cplus.
+apply: (Rplus_le_mono sor).
+apply: Rtimes_aux2; first by apply/rpow_0/hd0. 
+- by [apply rpow_1 | apply hd0 | apply hd1].
+- apply IHp1 => i hp.
+  apply h.
+  by rewrite leq_max ; apply/orP; right.
+- by apply lower_bound_negative.
+apply IHp3 => i hp.
+apply h => /=.
+rewrite leq_max; apply/orP; left.
+rewrite Pnat.Pos2Nat.inj_add.
+by rewrite leq_add2r.
 Qed.
-
-
-Lemma remainder_lemma p : forall l, ((forall i, (Pos.to_nat i <= varmax p)%nat -> 0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l) ->  [lower_bound_0_1 p] <= eval_pol l p).
-Proof.
-induction p; move => l h //=.
-- apply rminus_aux2. rewrite <- cOrO. rewrite <- r_cminus. by apply c_aux.
-- simpl in h. apply IHp. move => i hp.
-  + have newh : (Pos.to_nat (i + p) <= varmax p0 + Pos.to_nat p)%N. rewrite Pnat.Pos2Nat.inj_add. by rewrite leq_add2r.
-  + by apply h.
-- 
-  + have varmax123 : (nat_of_pos 1 <= varmax (PX p1 p2 p3))%N. rewrite leq_max. apply/orP. left. move : (varmax_nonneg p3). by rewrite -ltnS addn1.
-  + have hd0 : 0 <= Env.hd l. by apply h. 
-  + have hd1 : 0 <= 1 - Env.hd l. by apply h.
-- rewrite r_cplus. apply (Rplus_le_mono sor). apply Rtimes_aux2.
-  + by apply rpow_0, hd0. 
-  + by [apply rpow_1 | apply hd0 | apply hd1].
-  + apply IHp1. move => i hp. apply h. by rewrite leq_max ; apply/orP; right.
-  + by apply lower_bound_negative.
-  + apply IHp2. move => i hp. apply h. simpl. rewrite leq_max. apply/orP; left. rewrite Pnat.Pos2Nat.inj_add. by rewrite leq_add2r.
-Qed.
-
 
 (*
-Lemma remainder_lemma p : forall l, ((forall i, (Pos.to_nat i <= varmax p)%coq_nat -> 0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l) ->  [lower_bound_0_1 p] <= eval_pol l p).
+Lemma remainder_lemma p : 
+  forall l, ((forall i, (Pos.to_nat i <= varmax p)%coq_nat -> 0 <= 
+  Env.nth i l /\ 0 <= 1 - Env.nth i l) ->  [lower_bound_0_1 p] <= eval_pol l p).
 induction p; move => l h //=.
 - apply rminus_aux2. rewrite <- cOrO. rewrite <- r_cminus. by apply c_aux.
 - simpl in h. apply IHp. move => i hp. 
@@ -593,7 +577,8 @@ Local Open Scope R_scope.
 
 Lemma Rsor : SOR R0 R1 Rplus Rmult Rminus Ropp (@eq R)  Rle Rlt.
 Proof.
-  constructor; intros ; subst ; try (intuition (subst; try ring ; auto with real)).
+  constructor; intros ; subst ; 
+    try (intuition (subst; try ring ; auto with real)).
   constructor.
   constructor.
   unfold RelationClasses.Symmetric. auto.
@@ -603,8 +588,7 @@ Proof.
   apply (Rlt_irrefl m) ; auto.
   apply Rnot_le_lt. auto with real.
   destruct (total_order_T n m) as [ [H1 | H1] | H1] ; auto.
-  intros.
-  rewrite <- (Rmult_neutral m).
+  rewrite -[R0](Rmult_neutral m).
   apply (Rmult_lt_compat_r) ; auto.
 Qed.
 
@@ -692,14 +676,17 @@ Definition sizeC := @size (PExpr Iqr.C).
 
 Infix "?==" := Peq.
 (*
-Definition norm_pol_eq (pol_tuple : (PExpr Iqr.C * PolC)) := let (s, t) := pol_tuple in norm s ?== t.
+Definition norm_pol_eq (pol_tuple : (PExpr Iqr.C * PolC)) :=
+  let (s, t) := pol_tuple in norm s ?== t.
 *)
 Definition interp_Sos_block env (eig_pos : seqC) (sos_block : Sos_block) := 
   let (eig, sqr) := sos_block in 
    Rmult (IQR (Nth eig_pos eig))  (Rsqr (eval_pol_R env sqr)).
 
-Definition interp_Sos env eig_pos (sos: Sos) := foldr_psatz 0 Rplus (interp_Sos_block env eig_pos) sos.
-Definition interp_Putinar_summand env hyps eig_pos (putinar_summand: Putinar_summand) := 
+Definition interp_Sos env eig_pos (sos: Sos) :=
+  foldr_psatz 0 Rplus (interp_Sos_block env eig_pos) sos.
+Definition interp_Putinar_summand env hyps eig_pos 
+          (putinar_summand: Putinar_summand) := 
 let (sos, ineq) := putinar_summand in 
 (*
 let pols := zip hyps ineq_pos in
@@ -707,15 +694,18 @@ let ineq_pol := (Nthpols pols ineq).2 in
 *)
  Rmult (interp_Sos env eig_pos sos) (eval_pol_R env (norm (Nthpol hyps ineq))).
 
-Definition interp_Psatz env hyps eig_pos summands := foldr_psatz 0 Rplus (interp_Putinar_summand env hyps eig_pos) summands.
+Definition interp_Psatz env hyps eig_pos summands :=
+  foldr_psatz 0 Rplus (interp_Putinar_summand env hyps eig_pos) summands.
 
 Definition Sos_block_toPolC eig_pos (sos_block : Sos_block) := 
    let (eig, sqr) := sos_block in 
     pmulC  (psquare sqr) (Nth eig_pos eig).
 
-Definition Sos_toPolC eig_pos (sos: Sos) := foldr_psatz P0 padd (Sos_block_toPolC eig_pos) sos.
+Definition Sos_toPolC eig_pos (sos: Sos) :=
+  foldr_psatz P0 padd (Sos_block_toPolC eig_pos) sos.
 
-Definition Putinar_summand_toPolC hyps eig_pos (putinar_summand: Putinar_summand) := 
+Definition Putinar_summand_toPolC hyps eig_pos 
+                     (putinar_summand: Putinar_summand) := 
   let (sos, ineq) := putinar_summand in
 (*
   let pols := zip hyps ineq_pos in
@@ -723,7 +713,8 @@ Definition Putinar_summand_toPolC hyps eig_pos (putinar_summand: Putinar_summand
 *)
    pmul (Sos_toPolC eig_pos sos) (norm (Nthpol hyps ineq)).
 
-Definition Psatz_toPolC hyps eig_pos summands := foldr_psatz P0 padd (Putinar_summand_toPolC hyps eig_pos) summands.
+Definition Psatz_toPolC hyps eig_pos summands :=
+  foldr_psatz P0 padd (Putinar_summand_toPolC hyps eig_pos) summands.
 
 
 Notation to_nat := N.to_nat.
@@ -751,124 +742,132 @@ Proof.
   apply IQR_le.
 Qed.
 
-Lemma eval_interp_Sos_block env eig_pos sos_block : interp_Sos_block env eig_pos sos_block = eval_pol_R env (Sos_block_toPolC eig_pos sos_block).
+Lemma eval_interp_Sos_block env eig_pos sos_block :
+  interp_Sos_block env eig_pos sos_block =
+   eval_pol_R env (Sos_block_toPolC eig_pos sos_block).
 Proof.
 move : sos_block => [eig sqr].
-rewrite /interp_Sos_block /Sos_block_toPolC. unfold eval_pol_R. rewrite (PmulC_ok Rsor QSORaddon). rewrite (eval_pol_square Rsor QSORaddon).  rewrite <- Rsqr_pow. unfold eval_pol. unfold rpow, pow_pos. by ring. Qed.
+rewrite /interp_Sos_block /Sos_block_toPolC.
+unfold eval_pol_R.
+rewrite (PmulC_ok Rsor QSORaddon).
+rewrite (eval_pol_square Rsor QSORaddon). 
+rewrite -Rsqr_pow /eval_pol /rpow /pow_pos.
+by ring.
+Qed.
 
-Lemma eval_interp_Sos env eig_pos sos :  interp_Sos env eig_pos sos = eval_pol_R env (Sos_toPolC eig_pos sos).
+Lemma eval_interp_Sos env eig_pos sos :
+  interp_Sos env eig_pos sos = eval_pol_R env (Sos_toPolC eig_pos sos).
 Proof.
-rewrite /interp_Sos. rewrite /Sos_toPolC.
+rewrite /interp_Sos /Sos_toPolC.
 elim : sos => [ | a [ | b tl] ih].
-- simpl; by rewrite IQR_0. 
+- by rewrite /= IQR_0. 
 - by apply eval_interp_Sos_block.
-- unfold interp_Sos in ih. rewrite (foldr_psatz_cons 0 Rplus) (foldr_psatz_cons P0 padd) eval_interp_Sos_block ih. unfold eval_pol_R. rewrite (eval_pol_add Rsor QSORaddon). by []. 
+rewrite (foldr_psatz_cons 0 Rplus) (foldr_psatz_cons P0 padd).
+by rewrite eval_interp_Sos_block ih /eval_pol_R (eval_pol_add Rsor QSORaddon).
 Qed.
 
-Lemma eval_interp_Putinar_summand env hyps eig_pos summand : interp_Putinar_summand env hyps eig_pos summand = eval_pol_R env (Putinar_summand_toPolC hyps eig_pos summand).
+Lemma eval_interp_Putinar_summand env hyps eig_pos summand :
+  interp_Putinar_summand env hyps eig_pos summand =
+   eval_pol_R env (Putinar_summand_toPolC hyps eig_pos summand).
+Proof.
 move : summand => [sos ineq].
-unfold  interp_Putinar_summand, eval_pol_R.
-rewrite (eval_pol_mul Rsor QSORaddon) eval_interp_Sos.
-by unfold eval_pol_R.
+rewrite /interp_Putinar_summand /eval_pol_R.
+by rewrite (eval_pol_mul Rsor QSORaddon) eval_interp_Sos.
 Qed.
 
-Lemma eval_interp_Psatz env hyps eig_pos summands : interp_Psatz env hyps eig_pos summands = eval_pol_R env (Psatz_toPolC hyps eig_pos summands). 
-rewrite /interp_Psatz. rewrite /Psatz_toPolC.
+Lemma eval_interp_Psatz env hyps eig_pos summands :
+  interp_Psatz env hyps eig_pos summands =
+   eval_pol_R env (Psatz_toPolC hyps eig_pos summands).
+Proof. 
+rewrite /interp_Psatz /Psatz_toPolC.
 elim : summands => [ | a [ | b tl] ih].
-- simpl;  by rewrite IQR_0.
+- by rewrite /= IQR_0.
 - by apply eval_interp_Putinar_summand.
-- unfold interp_Putinar_summand in ih. rewrite (foldr_psatz_cons 0 Rplus) (foldr_psatz_cons P0 padd) eval_interp_Putinar_summand ih. unfold eval_pol_R. rewrite (eval_pol_add Rsor QSORaddon). by []. 
+rewrite (foldr_psatz_cons 0 Rplus) (foldr_psatz_cons P0 padd).
+rewrite eval_interp_Putinar_summand ih.
+by rewrite /eval_pol_R (eval_pol_add Rsor QSORaddon).
 Qed.
-
 
 
 (*
-Fixpoint all2 a (s : seq (PExpr Iqr.C) ) (t : seq PolC) : bool := if size s == size t then (if (s, t) is (x :: s', y::t') then a x y && all2 a s' t' else true) else false.
+Fixpoint all2 a (s : seq (PExpr Iqr.C) ) (t : seq PolC) : bool :=
+  if size s == size t then 
+  (if (s, t) is (x :: s', y::t') then a x y && all2 a s' t' else true)
+   else false.
 *)
 
 Local Open Scope nat_scope.
+
 Lemma lt_total n m : (n < m) || (m <= n).
-rewrite ltnNge.
-by rewrite orNb.
-Qed.
+Proof. by rewrite ltnNge orNb. Qed.
 
 Lemma order_ssrnat n m : ssrnat.leq (S n) m \/ ssrnat.leq m n.
-Proof.
-apply /orP.
-by apply lt_total.
-Qed.
+Proof. by apply /orP/lt_total. Qed.
 
 Lemma all_nth : forall s, all cnneg s -> forall n, cnneg (Nth s n).
 Proof.
 move => s h n.
-have : ssrnat.leq (S n) (size s) \/ ssrnat.leq (size s) n by apply order_ssrnat.
-case.
-move => hle.
-unfold Nth.
-move/(all_nthP cO) : h.
-move => allh. by apply allh.
-move => hle.
-have : Nth s n = cO.
-by apply (nth_default cO).
-move => h0. by rewrite h0.
+have: ssrnat.leq (S n) (size s) \/ ssrnat.leq (size s) n.
+  by apply order_ssrnat.
+case=> hle; first by apply: all_nthP.
+by have -> : Nth s n = cO by apply (nth_default cO).
 Qed. 
 
 Local Open Scope R_scope.
 
-Lemma nthpol env hyps : conj_PExpr_nonneg env hyps -> (forall n : nat, 0 <= eval_pol_R env (norm (Nthpol hyps n))).
+Lemma nthpol env hyps : 
+  conj_PExpr_nonneg env hyps -> 
+  (forall n : nat, 0 <= eval_pol_R env (norm (Nthpol hyps n))).
 Proof.
-elim : hyps => //=.
-- move => h n.
-  have -> :  Nthpol [::] n = PEc cO by apply nth_nil. simpl; rewrite IQR_0; by apply Rle_refl.
-- move => p tl h.
-move => [ha htl] n.
- + case n => //=.
-   have <- : eval_expr env p = eval_pol_R env (norm p) by apply (eval_pol_norm Rsor  QSORaddon).
-   by unfold PExpr_nonneg in ha; apply Rge_le.
- + by apply h.
+elim : hyps => //= [h n|p tl h [ha htl] [|n] //=].
+- have -> :  Nthpol [::] n = PEc cO by apply nth_nil.
+  by rewrite /= IQR_0; apply Rle_refl.
+- have <- : eval_expr env p = eval_pol_R env (norm p).
+    by apply (eval_pol_norm Rsor  QSORaddon).
+  by apply Rge_le.
+by apply h.
 Qed.
 
-
-Lemma thm_Sos_block env eig_pos sos_block : (all cnneg eig_pos) -> 0 <= interp_Sos_block env eig_pos sos_block.
+Lemma thm_Sos_block env eig_pos sos_block : 
+  (all cnneg eig_pos) -> 0 <= interp_Sos_block env eig_pos sos_block.
 Proof.
 move : sos_block => [eig sqr] H; rewrite /interp_Sos_block.
- - apply Rmult_le_0_compat. rewrite <- Rsqr_pow. by apply Rle_0_sqr.  
- - rewrite <- IQR_0. apply IQR_le. by apply all_nth. (* [rewrite Rsqr_pow; apply Rle_0_sqr |  ].*)
+apply Rmult_le_0_compat.
+  by rewrite <- Rsqr_pow; apply Rle_0_sqr.  
+by rewrite <- IQR_0; apply IQR_le; apply all_nth.
 Qed.
 
-Lemma thm_Sos env eig_pos sos: all cnneg eig_pos -> 0 <= interp_Sos env eig_pos sos.
+Lemma thm_Sos env eig_pos sos :
+  all cnneg eig_pos -> 0 <= interp_Sos env eig_pos sos.
 Proof.
 move => H; elim: sos => [ | a [ | b tl] ih].
-by apply: Rle_refl.
-- rewrite /interp_Sos.
-by apply thm_Sos_block.
-- rewrite /interp_Sos.
-unfold interp_Sos in ih.
-rewrite (foldr_psatz_cons 0 Rplus (interp_Sos_block env eig_pos) a).
-apply Rplus_le_le_0_compat.
-by apply : thm_Sos_block. done.
+- by apply: Rle_refl.
+- by apply thm_Sos_block.
+rewrite /interp_Sos (foldr_psatz_cons 0 Rplus (interp_Sos_block env eig_pos) a).
+apply Rplus_le_le_0_compat => //.
+by apply : thm_Sos_block.
 Qed.
 
-Lemma thm_Putinar_summand env hyps eig_pos summand : conj_PExpr_nonneg env hyps -> all cnneg eig_pos -> 0 <= interp_Putinar_summand env hyps eig_pos summand.
+Lemma thm_Putinar_summand env hyps eig_pos summand :
+  conj_PExpr_nonneg env hyps -> all cnneg eig_pos -> 
+  0 <= interp_Putinar_summand env hyps eig_pos summand.
 Proof.
 move : summand => [sos ineq] Hyps Heig.
 apply Rmult_le_0_compat. 
-- apply (nthpol env hyps Hyps).
-- apply thm_Sos, Heig.
+ by apply (nthpol env hyps Hyps).
+by apply/thm_Sos/Heig.
 Qed.
 
-Lemma thm_Putinar_Psatz env hyps eig_pos summands : conj_PExpr_nonneg env hyps -> all cnneg eig_pos -> 0 <= interp_Psatz env hyps eig_pos summands.
+Lemma thm_Putinar_Psatz env hyps eig_pos summands :
+  conj_PExpr_nonneg env hyps -> all cnneg eig_pos -> 
+  0 <= interp_Psatz env hyps eig_pos summands.
 Proof.
-move => Hyps Heig. elim: summands => [ | a [ | b tl] ih].
-by apply: Rle_refl.
-- rewrite /interp_Psatz.
+move => Hyps Heig; elim: summands => [ | a [ | b tl] ih].
+- by apply: Rle_refl.
+- by apply thm_Putinar_summand.
+rewrite /interp_Psatz foldr_psatz_cons.
+apply Rplus_le_le_0_compat => //.
 by apply thm_Putinar_summand.
-- rewrite /interp_Psatz.
-unfold interp_Psatz in ih.
-rewrite foldr_psatz_cons.
-apply Rplus_le_le_0_compat.
-by apply thm_Putinar_summand.
-by done.
 Qed.
 
 (* Certificate: the tuple (summands, r, eig_pos) *)
@@ -879,65 +878,74 @@ env: mapping positive to variables of the POP
 *)
 
 
-Lemma conj_PExpr_nonneg_cons l x tl : conj_PExpr_nonneg l (x::tl) =  (PExpr_nonneg l x /\ conj_PExpr_nonneg l tl).
+Lemma conj_PExpr_nonneg_cons l x tl : 
+  conj_PExpr_nonneg l (x::tl) =  (PExpr_nonneg l x /\ conj_PExpr_nonneg l tl).
 Proof. by []. Qed.
 
-Lemma conj_PExpr_nonneg_concat l h1 h2 :conj_PExpr_nonneg l h1 -> conj_PExpr_nonneg l h2 -> conj_PExpr_nonneg l (h1 ++ h2).
+Lemma conj_PExpr_nonneg_concat l h1 h2 : 
+  conj_PExpr_nonneg l h1 -> conj_PExpr_nonneg l h2 -> 
+  conj_PExpr_nonneg l (h1 ++ h2).
 Proof.
-elim h1.
-by [].
-move =>  a ? H H1 ?.
+elim h1 => // a ? H H1 ?.
 rewrite cat_cons.
 rewrite conj_PExpr_nonneg_cons. 
 rewrite conj_PExpr_nonneg_cons in H1.
-move : H1 => [h ?].
-split.
-  apply h.  
-  by apply H.
+case: H1 => h ?; split => //.
+by apply H.
 Qed.
 
 
-Lemma conj_PExpr_nonneg_concat2 l h1 h2 : conj_PExpr_nonneg l (h1 ++ h2) -> (conj_PExpr_nonneg l h1 /\ conj_PExpr_nonneg l h2).
+Lemma conj_PExpr_nonneg_concat2 l h1 h2 :
+  conj_PExpr_nonneg l (h1 ++ h2) -> 
+  (conj_PExpr_nonneg l h1 /\ conj_PExpr_nonneg l h2).
 Proof.
-elim h1 => //=.
-split. split; [apply H0 | by apply H; by apply H0].
-by apply H, H0.
+elim h1 => //= a l1 H [H1 H2].
+by case: (H H2).
 Qed.
 
-Lemma conj_PExpr_nonneg_1 env hyps :  conj_PExpr_nonneg env hyps -> conj_PExpr_nonneg env ((PEc cI)::hyps).
+Lemma conj_PExpr_nonneg_1 env hyps :
+  conj_PExpr_nonneg env hyps -> conj_PExpr_nonneg env ((PEc cI)::hyps).
 Proof.
-move => h.
-simpl. split => //=.
-unfold PExpr_nonneg => //=. rewrite IQR_1. by apply Rle_ge, Rle_0_1.
+move => h /=; split => //=.
+rewrite /PExpr_nonneg /= IQR_1.
+by apply/Rle_ge/Rle_0_1.
 Qed.
 
-Lemma conj_PExpr_nonneg_n env hyps n :  conj_PExpr_nonneg env hyps -> conj_PExpr_nonneg env (nseq n(PEc cI)++ hyps).
+Lemma conj_PExpr_nonneg_n env hyps n :
+  conj_PExpr_nonneg env hyps -> conj_PExpr_nonneg env (nseq n(PEc cI) ++ hyps).
 Proof.
-move => h.
-simpl. unfold nseq.
-induction n.
-  by [].
-  simpl.
-  unfold PExpr_nonneg => //=. rewrite IQR_1. split. apply Rle_ge, Rle_0_1. by [].
+move => h /=.
+induction n => //=.
+split => //.
+rewrite /PExpr_nonneg /= IQR_1.
+by apply /Rle_ge/Rle_0_1.
 Qed.
 
 Definition PEX := PEX Iqr.C.
 
-Definition var_0_1 hyps n := (norm (PEX (Pos.of_nat n)) ?== norm (Nthpol hyps (2 * n -2 ))) && (norm (PEsub (PEc cI) (PEX (Pos.of_nat n))) ?== norm (Nthpol hyps (2 * n - 1))).
+Definition var_0_1 hyps n :=
+  (norm (PEX (Pos.of_nat n)) ?== norm (Nthpol hyps (2 * n -2 ))) && 
+  (norm (PEsub (PEc cI) (PEX (Pos.of_nat n))) ?== 
+                         norm (Nthpol hyps (2 * n - 1))).
 
-
-Lemma all_vars_0_1_aux bnds p : all (var_0_1 bnds) (iota 1 (varmax p)) -> forall n, ((0 < n)%N && (n <= varmax p)%nat) -> var_0_1 bnds n. 
+Lemma all_vars_0_1_aux bnds p : 
+  all (var_0_1 bnds) (iota 1 (varmax p)) -> 
+  forall n, ((0 < n)%nat && (n <= varmax p)%nat) -> var_0_1 bnds n. 
 Proof.
 move => h n.
-have :  (S (n.-1) <= (size (iota 1 (varmax p))))%N  \/  ((size (iota 1 (varmax p)) ) <= (n.-1))%N by apply order_ssrnat.
-case.
-- move => hle.
-  move/(all_nthP 0%N) : h.
-  move => allh.  have : var_0_1 bnds (nth 0%N (iota 1 (varmax p)) (n - 1)). rewrite -subn1 in hle. by move : (allh (n -1)%N hle).
-  + rewrite nth_iota.  rewrite add1n. move => h1. move/andP => [b1 b2]. by rewrite subn1 prednK in h1.
-  + by rewrite size_iota -subn1 in hle.
-- rewrite size_iota. move => h1. move/andP => [b1 b2].
-  have : (varmax p < (n.-1).+1)%nat by rewrite ltnS. rewrite prednK; last by apply b1. rewrite ltnNge negbF; by [].
+have :  (S (n.-1) <= (size (iota 1 (varmax p))))%nat 
+         \/  ((size (iota 1 (varmax p))) <= (n.-1))%nat by apply order_ssrnat.
+case => [hle|].
+  have allh := all_nthP 0%nat h.
+  have : var_0_1 bnds (nth 0%nat (iota 1 (varmax p)) (n - 1)).
+    by apply: allh; rewrite subn1.
+  rewrite nth_iota.
+    rewrite add1n => h1 /andP[b1 b2].
+    by rewrite -[n]prednK // -subn1.
+  by rewrite subn1 -[varmax _](size_iota 1).
+rewrite size_iota => h1 /andP[b1 b2].
+have : (varmax p < (n.-1).+1)%nat by rewrite ltnS.
+by rewrite prednK // ltnNge negbF.
 Qed.
 
 (*
@@ -945,72 +953,107 @@ Lemma  var_0_1_0 hyps : var_0_1 hyps 0%N = false.
 Proof. by []. Qed.
 *)
 
-Definition sqr_bnd n := PEsub (PEc cI) (PEmul (PEX (Pos.of_nat n)) (PEX (Pos.of_nat n))).
+Definition sqr_bnd n := 
+  PEsub (PEc cI) (PEmul (PEX (Pos.of_nat n)) (PEX (Pos.of_nat n))).
 Definition sqr_bnds varmax := map sqr_bnd (iota 1 varmax).
 
 
-Lemma all_vars_0_1 l bnds p : conj_PExpr_nonneg l bnds ->  all (var_0_1 bnds) (iota 1 (varmax p)%nat) -> (forall i, (Pos.to_nat i <= varmax p)%nat -> 0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l).
+Lemma all_vars_0_1 l bnds p :
+  conj_PExpr_nonneg l bnds ->  all (var_0_1 bnds) (iota 1 (varmax p)%nat) -> 
+ (forall i, (Pos.to_nat i <= varmax p)%nat -> 0 <= Env.nth i l /\ 
+            0 <= 1 - Env.nth i l).
 Proof.
-move => Hyps hall.
-move : (all_vars_0_1_aux bnds p hall). move => h i hpos.
-- have : var_0_1 bnds (Pos.to_nat i).
-  + apply h. apply/andP. split; last by done.
-  + induction i => //=. rewrite Pos2Nat.inj_xO. rewrite multE. rewrite mul2n. rewrite double_gt0.  apply IHi. rewrite Pos2Nat.inj_xO multE mul2n in hpos.  apply leq_trans with (n:= (Pos.to_nat i).*2); last by done. rewrite -addnn. by apply leq_addr.
-- unfold var_0_1. move/andP => [h1 h2]. (*move/andP : h1 => [h0 h1].*) rewrite Pos2Nat.id in h1, h2. split.
-  apply (norm_eval_pexpr_correct Rsor QSORaddon l) in h1. simpl in h1. rewrite h1. move : (nthpol l bnds Hyps (2 * Pos.to_nat i -2) ). rewrite eval_pol_norm. by unfold eval_pol_R, eval_pol. apply Rsor. by apply QSORaddon.
-- apply (norm_eval_pexpr_correct Rsor QSORaddon l) in h2.  simpl in h2. rewrite IQR_1 in h2. rewrite h2. move : (nthpol l bnds Hyps (2 * Pos.to_nat i - 1) ). rewrite eval_pol_norm. by unfold eval_pol_R, eval_pol. apply Rsor. by apply QSORaddon.
+move => Hyps hall i hpos.
+have h := all_vars_0_1_aux bnds p hall.
+have : var_0_1 bnds (Pos.to_nat i).
+  apply/h/andP; split => //.
+  elim: i hpos => //= p1 IH hpos.
+  rewrite Pos2Nat.inj_xO multE mul2n double_gt0.
+  apply IH.
+  apply: leq_trans hpos. 
+  by rewrite Pos2Nat.inj_xO multE mul2n -addnn leq_addr.
+rewrite /var_0_1 Pos2Nat.id => /andP[H1 H2]; split.
+  have H := norm_eval_pexpr_correct Rsor QSORaddon _ _ _ H1.
+  rewrite [Env.nth i l]H /=.
+  move : (nthpol l bnds Hyps (2 * Pos.to_nat i - 2)). 
+  by rewrite (eval_pol_norm Rsor QSORaddon).
+have /= := norm_eval_pexpr_correct  Rsor QSORaddon _ _ _ H2.
+rewrite IQR_1 => ->.
+move : (nthpol l bnds Hyps (2 * Pos.to_nat i - 1)).
+by rewrite (eval_pol_norm Rsor QSORaddon).
 Qed.
-
-
 
 Lemma var_0_1_sqr_0_1 l i :  0 <= Env.nth i l ->  0 <= 1 - Env.nth i l->
 eval_expr l (PEc cI) - eval_expr l (PEmul (PEX i) (PEX i)) >= 0.
 Proof.
- move => h0 h1.
- simpl. rewrite IQR_1. apply Rle_ge.
- have -> : 1 - Env.nth i l * Env.nth i l= (1 - Env.nth i l) * (1 + Env.nth i l) by ring.
- apply Rmult_le_0_compat; last by done.  apply Rplus_le_le_0_compat; by [apply Rle_0_1 | done].
+ move => h0 h1 /=.
+ rewrite IQR_1.
+ apply Rle_ge.
+ have -> : R1 - Env.nth i l * Env.nth i l = 
+                (R1 - Env.nth i l) * (R1 + Env.nth i l) by ring.
+ apply Rmult_le_0_compat => //.
+ apply Rplus_le_le_0_compat; by [apply Rle_0_1 | done].
 Qed.
 
-Lemma sqr_bnds_correct l bnds p : conj_PExpr_nonneg l bnds -> all (var_0_1 bnds) (iota 1 (varmax p)%nat) ->  conj_PExpr_nonneg l (sqr_bnds (varmax p)).
+Lemma sqr_bnds_correct l bnds p :
+  conj_PExpr_nonneg l bnds -> all (var_0_1 bnds) (iota 1 (varmax p)%nat) ->
+  conj_PExpr_nonneg l (sqr_bnds (varmax p)).
 Proof.
- move => Hyps hall.
- pose n := varmax p.
- have : conj_PExpr_nonneg l (sqr_bnds n); last by done.
- have : (forall i, (Pos.to_nat i <= n)%nat -> 0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l) by apply all_vars_0_1 with (bnds:=bnds).
- unfold sqr_bnds. move => H.
- induction n => //.
-replace (n.+1) with (n + 1)%nat; last  by rewrite  addn1.
-have -> : [seq sqr_bnd i | i <- iota 1 (n+1)] = [seq sqr_bnd i | i <- iota 1 n]++[::(sqr_bnd n.+1)].
-have iotan : [:: n.+1] =  iota (1 + n) 1 by done.
-have :  iota 1 (n + 1) =  iota 1 n ++ [::n.+1]. rewrite iotan.
-by apply (iota_add 1 n 1).  move => hn. rewrite hn. by rewrite map_cat.
-apply conj_PExpr_nonneg_concat => //=. apply IHn. move => i. move => P. apply H.
- apply leq_trans with (n:=n); first by []; last by apply leqnSn.
- split; last by done.
-have [h0 h1] : 0 <= Env.nth (Pos.of_nat (n.+1)) l /\ 0 <= 1 - Env.nth (Pos.of_nat (n.+1)) l.
-apply H. rewrite Nat2Pos.id; [by apply ltnSn | done].
-unfold PExpr_nonneg, sqr_bnd. by apply  var_0_1_sqr_0_1.
- Qed.
-
+move => Hyps hall.
+pose n := varmax p.
+have : conj_PExpr_nonneg l (sqr_bnds n); last by done.
+have : (forall i, (Pos.to_nat i <= n)%nat -> 
+           0 <= Env.nth i l /\ 0 <= 1 - Env.nth i l)
+  by apply all_vars_0_1 with (bnds:=bnds).
+rewrite /sqr_bnds => H.
+elim: n H => // n IH H.
+rewrite -[n.+1]addn1.
+have -> : [seq sqr_bnd i | i <- iota 1 (n+1)] = 
+          [seq sqr_bnd i | i <- iota 1 n] ++ [:: sqr_bnd n.+1].
+  have -> : iota 1 (n + 1) =  iota 1 n ++ [::n.+1].
+    by apply (iota_add 1 n 1).
+  by rewrite map_cat.
+apply conj_PExpr_nonneg_concat => //=.
+  apply IH => i P.
+  apply H.
+  by apply: leq_trans P _.
+split=> //.
+have [h0 h1] : 0 <= Env.nth (Pos.of_nat (n.+1)) l /\ 
+               0 <= 1 - Env.nth (Pos.of_nat (n.+1)) l.
+  apply H.
+  by rewrite Nat2Pos.id // ltnSn.
+by apply: var_0_1_sqr_0_1.
+Qed.
 
 Lemma Putinar_Psatz_correct bnds hyps env obj r eig_pos summands :
-let n:= (size summands - size ((bnds ++ sqr_bnds (varmax r)) ++ hyps))%nat in
-conj_PExpr_nonneg env (bnds ++ hyps) -> all (var_0_1 bnds) (iota 1 (varmax r)) && all cnneg eig_pos && ((norm obj) ?== padd (Psatz_toPolC (nseq n (PEc cI) ++ ((bnds ++ (sqr_bnds (varmax r))) ++ hyps)) eig_pos summands) (psubC r (lower_bound_0_1 r))) -> 0 <= eval_expr env obj.
+  let n := (size summands - size ((bnds ++ sqr_bnds (varmax r)) ++ hyps))%nat in
+  conj_PExpr_nonneg env (bnds ++ hyps) -> 
+  all (var_0_1 bnds) (iota 1 (varmax r)) && 
+  all cnneg eig_pos && ((norm obj) ?== 
+                         padd (Psatz_toPolC (nseq n (PEc cI) ++ ((bnds ++ 
+                                      (sqr_bnds (varmax r))) ++ hyps))
+                                       eig_pos summands) 
+                       (psubC r (lower_bound_0_1 r))) -> 0 <= eval_expr env obj.
 Proof.
-move =>  n Hyps B. move/andP : B => [b1 NORM]. move/andP : b1 => [ENV EIG].
- apply conj_PExpr_nonneg_concat2 with (h1:=bnds) in Hyps. destruct Hyps as [Bnds Hyps].
-- have Bndsqr : conj_PExpr_nonneg env (sqr_bnds (varmax r)) by apply sqr_bnds_correct with (bnds := bnds). 
-- move  : (conj_PExpr_nonneg_concat env bnds (sqr_bnds (varmax r)) Bnds Bndsqr ) => Bnds_Bndsqr. 
-- move  : (conj_PExpr_nonneg_concat env (bnds ++ sqr_bnds (varmax r)) hyps Bnds_Bndsqr Hyps) => allhyps.
+move =>  n Hyps /andP[/andP[ENV EIG] NORM].
+have [Bnds Hyps1]:= conj_PExpr_nonneg_concat2 _ _ _ Hyps.
+have Bndsqr : conj_PExpr_nonneg env (sqr_bnds (varmax r)).
+  by apply sqr_bnds_correct with (bnds := bnds). 
+have Bnds_Bndsqr := 
+     conj_PExpr_nonneg_concat env bnds (sqr_bnds (varmax r)) Bnds Bndsqr.
+have allhyps := conj_PExpr_nonneg_concat env (bnds ++ sqr_bnds (varmax r))
+                  hyps Bnds_Bndsqr Hyps1.
 unfold eval_expr.
-rewrite (eval_pol_norm_aux Rsor QSORaddon env _ (padd (Psatz_toPolC (nseq n (PEc cI) ++ (
-((bnds ++ sqr_bnds (varmax r)) ++ hyps)
-))  eig_pos summands)(psubC r (lower_bound_0_1 r))) ).
-- rewrite (eval_pol_add  Rsor QSORaddon).
+rewrite (eval_pol_norm_aux Rsor QSORaddon env _ 
+            (padd (Psatz_toPolC (nseq n (PEc cI) ++ 
+                       (((bnds ++ sqr_bnds (varmax r)) ++ hyps)))
+                         eig_pos summands)(psubC r (lower_bound_0_1 r)))) //.
+rewrite (eval_pol_add  Rsor QSORaddon).
 apply Rplus_le_le_0_compat.
- + rewrite <- eval_interp_Psatz. apply thm_Putinar_Psatz. by apply conj_PExpr_nonneg_n. by [].
- + rewrite  (PsubC_ok Rsor  QSORaddon) rminus_aux2. apply (remainder_lemma Rsor QSORaddon). move => i h.
-apply all_vars_0_1 with (bnds:=(bnds)) (p:=r). by []. by []. by []. by apply Rsor.
-- by [].
+  rewrite <- eval_interp_Psatz.
+  apply thm_Putinar_Psatz => //.
+  by apply conj_PExpr_nonneg_n.
+rewrite  (PsubC_ok Rsor QSORaddon) (rminus_aux2 Rsor).
+apply: (remainder_lemma Rsor QSORaddon) => i h.
+by apply: all_vars_0_1 Bnds _ _ h.
 Qed.

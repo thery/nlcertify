@@ -44,8 +44,8 @@ module Make
 
   let nvars = ref 0                           
   let fw_vars_tbl = Hashtbl.create 10 
-  let fw_nvars_tbl = Hashtbl.create 10 
-  let fw_cvars_tbl = Hashtbl.create 10
+  let fw_nvars_tbl : (fw_pol, int) Hashtbl.t = Hashtbl.create 10 
+  let fw_cvars_tbl : (fw_pol, int) Hashtbl.t = Hashtbl.create 10
 
   let vot_aux f p n = 
     match p with
@@ -126,7 +126,8 @@ let norm_constraints_of_tree norm_vars_intervals n_box tbl_scaling : bound list 
   in
     f_aux norm_vars_intervals
 
-    let ineq_cstr_list, eq_cstr_list = ref [], ref []
+    let ineq_cstr_list, eq_cstr_list = (ref [] : pol list ref) , 
+                                       (ref [] : pol list ref)
     let eq_cstr_tbl = ref []
     let ineq_cstr_tbl = ref []
 

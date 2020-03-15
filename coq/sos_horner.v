@@ -1,5 +1,5 @@
 
-Require Import ssreflect ssrbool eqtype ssrfun.
+From mathcomp Require Import ssreflect ssrbool eqtype ssrfun.
 Set Implicit Arguments.
 Require Import Setoid Morphisms Env BinPos BinNat BinInt.
 Require Export Ring_theory.

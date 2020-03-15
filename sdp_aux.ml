@@ -96,7 +96,7 @@ module Make (N: Numeric.T) (U: Tutils.T with type t = N.t) (M: Mesh_interval.T w
     *)
         let mat = Lacaml.D.Mat.of_array mat in
         let eigenvalues = Lacaml.D.Vec.to_array (Lacaml.D.syev ~vectors:true mat) in
-        let eigenvectors = Lacaml.D.Mat.to_array (Lacaml.D.Mat.transpose mat) in
+        let eigenvectors = Lacaml.D.Mat.to_array (Lacaml.D.Mat.transpose_copy mat) in
         let eigenvalues = Array.map N.num_of_float eigenvalues in
         let eigenvalues = Array.map (fun ev -> if N.ge_i (N.num_of_float Config.Config.eig_tol) ev then N.zero_i else ev)  eigenvalues in
           eigenvalues, Array.map (fun a -> Array.map N.num_of_float a) eigenvectors
