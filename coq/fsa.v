@@ -53,14 +53,14 @@ Inductive Fsa : Type :=
 
 
 (* get the interval computed by interval arithmetics *)
-Fixpoint get_itv (f : Fsa) := 
+Definition get_itv (f : Fsa) := 
   match f with
   | Poly _ itv _ (*| Fdivp _ _ itv _*) 
   | Fdiv _ _ itv _  _ | Fmul _ _ itv _ _ | Fsub _ _ itv _ _ | Fopp _ itv 
   | Fadd _ _ itv _ _ | Fsqrt _ itv => itv end.
 
 (* get the interval computed by SOS relaxations *)
-Fixpoint get_itv_sos f := 
+Definition get_itv_sos f := 
   match f with
   | Poly _ itv _ (*| Fdivp _ _ _ itv *)| Fdiv _ _ _ itv _ | Fmul _ _ _ itv _ 
   | Fsub _ _ _ itv _ | Fopp _ itv | Fadd _  _ _ itv _ | Fsqrt _ itv => itv end.

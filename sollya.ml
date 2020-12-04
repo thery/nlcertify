@@ -57,7 +57,7 @@ module Make
                 let buffer = Bytes.create 100 in
                 let n = Unix.read fd buffer 0 100 in
                 let _ = if n = 0 then U.wait 10 else () in
-                let s = String.sub buffer 0 n in
+                let s = Bytes.sub_string buffer 0 n in
                   try 
                     let _ = Str.search_forward (Str.regexp "\\$") s 0 in
                       List.rev (s :: acc)
