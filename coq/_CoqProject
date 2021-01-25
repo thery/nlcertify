@@ -1,3 +1,6 @@
+-arg -w -arg -native-compiler 
+-arg -w -arg yes 
+
 -R . nlcertify
 
 Env.v
